@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2 — Setup and shutdown
+
+The single launcher now creates its Python environment and installs Pillow when needed.
+Startup/USB failure and normal exit now clean up held notes, preview, pointer state, MIDI and OSC resources.
+Added regression checks for startup and shutdown failures and releasing OSC resources.
+
 ## 0.1.1 — One launcher
 
 Simplified the public package to start-push.bat for the current Studio UI. Removed alternate launchers

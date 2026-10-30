@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from types import SimpleNamespace
+import threading
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'bridge'))
 import mpc_push as engine
@@ -14,6 +15,42 @@ import autostart
 
 
 class Reliability(unittest.TestCase):
+    def test_startup_failure_releases_resources_and_notes(self):
+        from unittest.mock import Mock
+        app = engine.App.__new__(engine.App)
+        app.lock, app.sounding, app.quit = threading.RLock(), {0: 60}, False
+        app.midi, app.live, app.previewer, app.clicker = Mock(), Mock(), Mock(), Mock()
+        app._run_session = Mock(side_effect=OSError('device unavailable'))
+        with self.assertRaisesRegex(OSError, 'device unavailable'):
+            app.run()
+        self.assertTrue(app.quit)
+        self.assertFalse(app.sounding)
+        app.midi.send.assert_called_once_with(0x80, 60, 0)
+        app.midi.close.assert_called_once()
+        app.live.stop.assert_called_once()
+        app.previewer.stop.assert_called_once()
+        app.clicker.up.assert_called_once()
+
+    def test_shutdown_failure_still_closes_midi_and_osc(self):
+        from unittest.mock import Mock
+        app = engine.App.__new__(engine.App)
+        app.lock, app.sounding = threading.RLock(), {}
+        app.midi, app.live, app.previewer, app.clicker = Mock(), Mock(), Mock(), Mock()
+        app._run_session = Mock()
+        app.previewer.stop.side_effect = OSError('preview failed')
+        with self.assertRaises(OSError): app.run()
+        app.midi.close.assert_called_once()
+        app.live.stop.assert_called_once()
+
+    def test_live_stop_releases_osc_port(self):
+        from unittest.mock import Mock
+        live = engine.Live(offline=True)
+        live.offline, live.rx, live.tx = False, Mock(), Mock()
+        live.stop()
+        self.assertTrue(live._stop.is_set())
+        live.rx.close.assert_called_once()
+        live.tx.close.assert_called_once()
+
     def test_arrangement_edges_and_short_clips(self):
         live, ui = engine.demo_live(), push_ui.UiState()
         ui.page, ui.arr_start = 'arrange', 64

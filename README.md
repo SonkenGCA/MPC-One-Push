@@ -43,7 +43,9 @@ with other models is not guaranteed. Share successful adaptations through an iss
 
 ## Setup
 
-1. Clone/download this repository. In its directory, run:
+1. Install Python 3 with the Python launcher enabled, then clone/download this repository.
+   **start-push.bat** creates its Python environment and installs Pillow on first launch (internet required).
+   If you prefer manual setup, run these commands in the repository directory:
 
    ```powershell
    py -3 -m venv .venv

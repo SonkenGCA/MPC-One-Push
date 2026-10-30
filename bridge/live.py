@@ -204,6 +204,9 @@ class Live:
 
     def stop(self):
         self._stop.set()
+        if not self.offline:
+            self.rx.close()
+            self.tx.close()
 
     @property
     def connected(self):

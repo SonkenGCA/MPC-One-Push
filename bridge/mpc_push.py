@@ -123,6 +123,25 @@ class App:
     # ------------------------------------------------------------ main loop
 
     def run(self, seconds=None, snapshots=False):
+        """Release host resources even if device initialization or shutdown fails."""
+        try:
+            self._run_session(seconds, snapshots)
+        finally:
+            self.quit = True
+            try:
+                with self.lock:
+                    self.all_notes_off()
+                self.previewer.stop()
+            finally:
+                try:
+                    self.clicker.up()
+                finally:
+                    try:
+                        self.midi.close()
+                    finally:
+                        self.live.stop()
+
+    def _run_session(self, seconds=None, snapshots=False):
         """snapshots: save the screen to logs/ui-live.png every 3 s (for checking it from the PC)."""
         from mpc_control import MpcControl
         from mpc_screen import MpcScreen
@@ -177,8 +196,6 @@ class App:
             finally:
                 self.save_settings()
                 self.shutdown()
-        self.midi.close()
-        self.live.stop()
         if frames:
             print("%d frames, %.1f ms each on average" % (frames, busy * 1000 / frames), flush=True)
 
