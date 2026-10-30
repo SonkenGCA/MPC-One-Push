@@ -10,6 +10,45 @@ import push_ui
 
 
 class Playing(unittest.TestCase):
+    def test_arrangement_pads_play_notes_even_when_session_mode_is_launch(self):
+        a=self.app
+        a.ui.page,a.ui.pads='arrange','launch'
+        a.live.send=Mock()
+        a.pad(0,90)
+        self.assertEqual(a.ui.pad_mode(),'play')
+        self.assertEqual(a.midi.send.call_args.args,(0x90,60,90))
+        a.live.send.assert_not_called()
+        a.ui.page='session'
+        self.assertEqual(a.ui.pad_mode(),'launch')
+
+    def test_arrangement_record_restores_timeline_before_record_enable(self):
+        a=self.app
+        a.ui.page='arrange'
+        a.live.send=Mock()
+        a.live.rec_mode=False
+        a.button('REC',True)
+        self.assertEqual([c.args for c in a.live.send.call_args_list],[
+            ('/live/song/set/session_record',0),('/live/song/set/back_to_arranger',0),
+            ('/live/song/set/record_mode',1)])
+        a.live.send.reset_mock()
+        a.button('REC',True)
+        a.live.send.assert_called_once_with('/live/song/set/record_mode',0)
+
+    def test_arrangement_play_restores_timeline_without_session_launch(self):
+        a=self.app
+        a.ui.page='arrange';a.live.playing=False;a.live.send=Mock()
+        a.button('PLAY',True)
+        self.assertEqual([c.args for c in a.live.send.call_args_list],[
+            ('/live/song/set/session_record',0),('/live/song/set/back_to_arranger',0),
+            ('/live/song/start_playing',)])
+
+    def test_session_recording_watcher_does_not_copy_in_arrangement(self):
+        a=self.app
+        a.live.mode='arrange';a.live.send=Mock()
+        a.live._rec_watch={(0,0):[0.,1]}
+        a.live._on_live_song_get_recording_clips([])
+        self.assertEqual(a.live._rec_watch,{})
+        a.live.send.assert_not_called()
     def test_arrangement_wheel_updates_live_start_marker_path(self):
         a = engine.App.__new__(engine.App)
         a.ui, a.live = push_ui.UiState(), engine.demo_live()

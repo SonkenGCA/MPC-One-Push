@@ -203,7 +203,7 @@ class UiState:
         self.pad_page = 36          # device page, opened Drum Rack: lowest note of the 16 pads shown
 
     def pad_mode(self):
-        return "step" if self.page == "clip" else self.pads
+        return "step" if self.page == "clip" else "play" if self.page == "arrange" else self.pads
 
     def play_label(self, live):
         """What the pads play, for the header chip: notes from C3, a scale, a drum pad's name, 16 Levels."""

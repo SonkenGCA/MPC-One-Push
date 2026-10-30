@@ -743,11 +743,15 @@ class App:
             else:
                 self.open_menu()
         elif name == "PLAY":
+            if ui.page == 'arrange' and not live.playing:
+                live.prepare_arrangement()
             live.song("stop_playing" if live.playing else "start_playing")
             live.playing = not live.playing
         elif name == "STOP":
             live.song("stop_all_clips" if ui.shift else "stop_playing")
         elif name == "PLAY START":
+            if ui.page == 'arrange':
+                live.prepare_arrangement()
             live.set_song_time(0.0)
             live.song("start_playing")
         elif name == "REC" and ui.shift:               # SHIFT+REC: record-arm the selected track
@@ -1637,6 +1641,9 @@ class App:
     # ------------------------------------------------------------ helpers
 
     def toggle_pads(self):
+        if self.ui.page == 'arrange':
+            self.live.toast('Arrangement pads play notes; use Session to launch clips')
+            return
         ui = self.ui
         self.all_notes_off()
         ui.pads = "launch" if ui.pads == "play" else "play"
@@ -1650,6 +1657,8 @@ class App:
         ui.page = page
         live.mode = page
         ui.help = False
+        if page == 'arrange':
+            live.prepare_arrangement()
         if page == "device":
             if live.dev.track == live.sel and live.dev.loaded:   # same track: stay where you were in its racks
                 live.send("/live/chain/get/devices", live.dev.track, live.dev.chain)

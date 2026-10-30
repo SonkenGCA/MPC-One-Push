@@ -767,6 +767,9 @@ class Live:
     def _on_live_song_get_recording_clips(self, v):
         """Remember where each Session recording started; once it stops, copy the clip into the arrangement there.
         A recording only counts as stopped after two replies without it (a lost UDP reply must not cut it short)."""
+        if self.mode == 'arrange':
+            self._rec_watch.clear()
+            return  # direct Arrangement recording must not also mirror Session clips
         now = {(v[k], v[k + 1]): v[k + 2] for k in range(1, len(v) - 2, 3)}
         for key, start in now.items():
             w = self._rec_watch.setdefault(key, [start, 0])
@@ -1539,7 +1542,16 @@ class Live:
         self.hold("loop_on")
         self.send("/live/song/set/loop", int(self.loop))
 
+    def prepare_arrangement(self):
+        self.rec = False
+        self.back_to_arranger = False
+        self._rec_watch.clear()
+        self.send('/live/song/set/session_record', 0)
+        self.send('/live/song/set/back_to_arranger', 0)
+
     def toggle_rec_mode(self):
+        if not self.rec_mode:
+            self.prepare_arrangement()
         self.rec_mode = not self.rec_mode
         self.hold("rec_mode")
         self.send("/live/song/set/record_mode", int(self.rec_mode))

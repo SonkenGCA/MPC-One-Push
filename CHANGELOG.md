@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+Arrangement pads now always play notes instead of inheriting Session launch mode. Entering
+Arrangement or starting its Play/Record clears Session recording and restores Arrangement
+playback, preventing Session overrides from greying out recorded clips. Session recording
+mirroring is suppressed on Arrangement to avoid duplicate copies. Four regression checks added.
+
 Arrangement now has a permanent + TRACK button at the upper left, opening MIDI, audio and return
 track creation. Position remains visible beneath the label. Available even with a full track bank.
 
