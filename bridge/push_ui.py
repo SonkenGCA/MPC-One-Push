@@ -179,6 +179,8 @@ class UiState:
         self.arr_start = 0.0        # arrangement: first beat in view
         self.arr_selected = None   # (track, start, length, name)
         self.arr_preview = None    # (selection, operation, destination)
+        self.arr_selection = []    # multi-clip selection, in track/time order
+        self.arr_marquee = None    # screen-space selection rectangle during a drag
         self.arr_len = 64.0         # beats in view (zoom)
         self.arr_follow = True      # scroll along with the playhead
         self.clip_mode = "notes"    # clip page: "notes" (piano roll) or "auto" (automation lane)
@@ -569,7 +571,7 @@ class Renderer:
                 if x1 - x0 > 30:
                     d.text((x0 + 6, y0 + 20), fit(d, name, font(14), x1 - x0 - 10), font=font(14),
                            fill=TEXT, anchor="lm")
-                if ui.arr_selected == (t, start, length, name):
+                if ui.arr_selected == (t, start, length, name) or (t, start, length, name) in ui.arr_selection:
                     d.rectangle([x0, y0+4, x1-1, y0+ARR_LANE_H-5], outline=TEXT, width=2)
             self.target(0, y0, TL_X, y0 + ARR_LANE_H, ("track", t))
             self.target(TL_X, y0, RAIL_X, y0 + ARR_LANE_H, ("drag", "arr", t))
@@ -584,6 +586,13 @@ class Renderer:
                 if right-left > 2:
                     d.rectangle((left,y0+2,right,y0+ARR_LANE_H-3), outline=ACCENT, width=3)
                     d.text((left+8,y0+20), 'Bar %.2f' % (a/bpb+1), font=font(14), fill=ACCENT)
+        if ui.arr_marquee:
+            left, top, right, bottom = ui.arr_marquee
+            d.rectangle((left, top, right, bottom), outline=ACCENT, width=2)
+            label = '%d clips' % len(ui.arr_selection)
+            yy = max(ly0, top-27)
+            d.rounded_rectangle((left,yy,min(RAIL_X-1,left+96),yy+25),4,fill=PANEL)
+            d.text((left+7,yy+12),label,font=font(14),fill=ACCENT,anchor='lm')
         # playhead
         x = x_of(live.song_time)
         if TL_X <= x < RAIL_X:

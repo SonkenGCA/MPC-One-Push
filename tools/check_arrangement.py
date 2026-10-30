@@ -43,4 +43,66 @@ class Arrangement(unittest.TestCase):
         with self.assertRaises(ValueError): self.edit('delete')
         self.track.delete_clip.assert_not_called()
 
+class Groups(unittest.TestCase):
+    def setUp(self):
+        self.a = SimpleNamespace(start_time=0.,length=4.,name='A',is_midi_clip=True)
+        self.b = SimpleNamespace(start_time=8.,length=2.,name='B',is_midi_clip=True)
+        self.tracks = [SimpleNamespace(arrangement_clips=[c],is_frozen=False,has_midi_input=True,
+                       duplicate_clip_to_arrangement=Mock(),delete_clip=Mock()) for c in (self.a,self.b)]
+        self.song = SimpleNamespace(tracks=self.tracks,record_mode=False,begin_undo_step=Mock(),end_undo_step=Mock())
+        self.group = module.capture_group(self.song,[[0,0.,4.,'A'],[1,8.,2.,'B']])
+
+    def test_duplicate_after_uses_whole_group_span(self):
+        self.assertEqual(self.group['end'],10.)
+        module.paste_group(self.song,self.group,0,self.group['end'])
+        self.tracks[0].duplicate_clip_to_arrangement.assert_called_once_with(self.a,10.)
+        self.tracks[1].duplicate_clip_to_arrangement.assert_called_once_with(self.b,18.)
+        self.song.begin_undo_step.assert_called_once()
+        self.song.end_undo_step.assert_called_once()
+
+    def test_paste_preserves_track_and_beat_offsets(self):
+        extra = [SimpleNamespace(arrangement_clips=[],is_frozen=False,has_midi_input=True,
+                    duplicate_clip_to_arrangement=Mock(),delete_clip=Mock()) for _ in range(2)]
+        self.tracks.extend(extra)
+        module.paste_group(self.song,self.group,2,32.)
+        extra[0].duplicate_clip_to_arrangement.assert_called_once_with(self.a,32.)
+        extra[1].duplicate_clip_to_arrangement.assert_called_once_with(self.b,40.)
+
+    def test_late_destination_collision_causes_zero_changes(self):
+        self.tracks[1].arrangement_clips.append(SimpleNamespace(start_time=18.,length=2.,name='Occupied'))
+        with self.assertRaises(ValueError):module.paste_group(self.song,self.group,0,10.)
+        for tr in self.tracks:tr.duplicate_clip_to_arrangement.assert_not_called()
+        self.song.begin_undo_step.assert_not_called()
+
+    def test_failed_second_copy_rolls_back_first_copy_only(self):
+        new = SimpleNamespace(name='New copy')
+        self.tracks[0].duplicate_clip_to_arrangement.return_value = new
+        self.tracks[1].duplicate_clip_to_arrangement.side_effect = RuntimeError('Refused')
+        with self.assertRaises(RuntimeError):module.paste_group(self.song,self.group,0,16.)
+        self.tracks[0].delete_clip.assert_called_once_with(new)
+        self.tracks[1].delete_clip.assert_not_called()
+        self.song.end_undo_step.assert_called_once()
+
+    def test_stale_source_and_missing_tracks_are_rejected(self):
+        self.b.name='Changed'
+        with self.assertRaises(ValueError):module.paste_group(self.song,self.group,0,16.)
+        self.b.name='B'
+        with self.assertRaises(ValueError):module.paste_group(self.song,self.group,1,16.)
+        self.song.begin_undo_step.assert_not_called()
+
+    def test_recording_frozen_mismatch_and_bad_time_are_rejected(self):
+        for field,value in (('is_frozen',True),('has_midi_input',False)):
+            old=getattr(self.tracks[1],field);setattr(self.tracks[1],field,value)
+            with self.assertRaises(ValueError):module.paste_group(self.song,self.group,0,16.)
+            setattr(self.tracks[1],field,old)
+        for at in (float('nan'),-1.):
+            with self.assertRaises(ValueError):module.paste_group(self.song,self.group,0,at)
+        self.song.record_mode=True
+        with self.assertRaises(ValueError):module.paste_group(self.song,self.group,0,16.)
+        self.song.begin_undo_step.assert_not_called()
+
+    def test_empty_and_duplicate_selections_are_rejected(self):
+        for selection in ([],[[0,0.,4.,'A']]*2):
+            with self.assertRaises(ValueError):module.capture_group(self.song,selection)
+
 if __name__ == '__main__': unittest.main(verbosity=2)

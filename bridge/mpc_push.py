@@ -25,7 +25,7 @@ from midi_out import MidiOut  # noqa: E402
 import places  # noqa: E402
 from preview import PREVIEWABLE, Previewer  # noqa: E402
 from push_ui import (COLS, GRIDS, H, KEY_W, MAIN_Y, NOTE_NAMES, PAGES, RAIL_X, ROLL_ROW_H, ROLL_ROWS,  # noqa: E402
-                     ROLL_RULER_H, ROWS, TL_X, W, Renderer, UiState, note_name, rgb, scale)
+                     ROLL_RULER_H, ROWS, TL_X, W, ARR_RULER_H, ARR_LANE_H, Renderer, UiState, note_name, rgb, scale)
 
 # Live 12's scale names (Song.scale_name's own documentation)
 SCALE_NAMES = ["Major", "Minor", "Dorian", "Mixolydian", "Lydian", "Phrygian", "Locrian", "Whole Tone",
@@ -1019,8 +1019,10 @@ class App:
         self.touch = {"action": action, "x": x, "y": y, "moved": False, "start": start, "last": None,
                       "t": time.time()}
         if action and action[0] == 'arr_clip':
-            self.touch['arr_can_move'] = self.ui.arr_selected == action[1:]
+            self.touch['arr_can_move'] = self.ui.arr_selected == action[1:] and len(self.ui.arr_selection) <= 1
             self.touch['arr_origin'] = self.ui.arr_start
+            self.ui.arr_follow = False
+        if action and action[:2] == ('drag','arr'):
             self.ui.arr_follow = False
         if action and action[:2] == ("drag", "env"):
             self.env_draw_at(x, y)
@@ -1073,7 +1075,10 @@ class App:
                 at = max(0., round((action[2]+dx/self.ui.arr_ppb())/snap)*snap)
                 self.ui.arr_preview = (action[1:], 'move', at)
             else:
-                self.ui.arr_start = max(0., tc['arr_origin']-dx/self.ui.arr_ppb())
+                self.arrangement_marquee(x, y)
+            return
+        if action and action[:2] == ('drag','arr') and action[2] >= 0 and tc['moved']:
+            self.arrangement_marquee(x, y)
             return
         if action and action[:2] == ("drag", "env"):    # drawing follows the finger from the first pixel
             self.env_draw_at(x, y)
@@ -1145,6 +1150,44 @@ class App:
             if kind == "roll":
                 self.ui.pitch_lo = max(0, min(127 - ROLL_ROWS + 1, p0 + round(dy / ROLL_ROW_H)))
 
+    def arrangement_marquee(self, x, y):
+        ui, tc = self.ui, self.touch
+        top = MAIN_Y+ARR_RULER_H
+        x0, x1 = sorted((max(TL_X,min(RAIL_X-1,tc['x'])), max(TL_X,min(RAIL_X-1,x))))
+        y0, y1 = sorted((max(top,min(top+ROWS*ARR_LANE_H-1,tc['y'])),
+                         max(top,min(top+ROWS*ARR_LANE_H-1,y))))
+        ui.arr_marquee = (x0,y0,max(x0+1,x1),max(y0+1,y1))
+        a = ui.arr_start+(x0-TL_X)/ui.arr_ppb()
+        b = ui.arr_start+(max(x0+1,x1)-TL_X)/ui.arr_ppb()
+        selected = []
+        for r in range(ROWS):
+            t = ui.bank+r
+            if t >= len(self.live.tracks):
+                break
+            lane = top+r*ARR_LANE_H
+            if max(y0+1,y1) <= lane+4 or y0 >= lane+ARR_LANE_H-5:
+                continue
+            for start,length,name in self.live.tracks[t].arrangement_clips():
+                if start < b and start+length > a:
+                    selected.append((t,start,length,name))
+        ui.arr_selection = selected
+        ui.arr_selected = selected[0] if selected else None
+
+    def arrangement_group_sheet(self):
+        selection = tuple(self.ui.arr_selection)
+        if not selection:
+            return
+        if len(selection) > 128:
+            self.live.toast('Select up to 128 clips at a time')
+            self.ui.arr_selection, self.ui.arr_selected = [], None
+            return
+        self.ui.sheet = {'title': '%d clips selected' % len(selection), 'items': [
+            ('Copy selection', ('arr_group','copy',selection)),
+            ('Duplicate after', ('arr_group','duplicate',selection)),
+            ('Paste at playhead', ('arr_clipboard','paste',min(c[0] for c in selection),self.live.song_time)),
+            ('Undo', ('arr_history','undo')), ('Redo', ('arr_history','redo')),
+            ('Clear selection', ('arr_clear',))]}
+
     def env_draw_at(self, x, y):
         """Automation lane: write the grid step under the finger, at the height of the finger."""
         ui, live = self.ui, self.live
@@ -1207,6 +1250,11 @@ class App:
         if not tc:
             return
         action = tc["action"]
+        if self.ui.arr_marquee is not None:
+            self.ui.arr_marquee = None
+            if self.ui.arr_selection:
+                self.arrangement_group_sheet()
+            return
         if action and action[0] == 'arr_clip':
             preview, self.ui.arr_preview = self.ui.arr_preview, None
             if tc.get('long'):
@@ -1215,6 +1263,7 @@ class App:
                 if preview and preview[2] != action[2]:
                     self.live.send('/live/arrangement/edit', *preview[0], preview[1], preview[2])
                     self.ui.arr_selected = None
+                    self.ui.arr_selection = []
             else:
                 self.tap(action)
             return
@@ -1278,6 +1327,7 @@ class App:
         elif kind == "arr":                               # tap the timeline = jump there (and pick the lane's track)
             ui, live = self.ui, self.live
             ui.arr_selected = None
+            ui.arr_selection = []
             beat = ui.arr_start + (x - TL_X) / ui.arr_ppb()
             snap = 1.0 if ui.arr_ppb() >= 12 else live.beats_per_bar()
             live.set_song_time(round(beat / snap) * snap)
@@ -1303,6 +1353,7 @@ class App:
             self.set_page(action[1])
         elif kind == "arr_clip":
             ui.arr_selected = action[1:]
+            ui.arr_selection = [action[1:]]
             live.select_track(action[1])
             if ui.shift:
                 self.arrangement_sheet(action[1:])
@@ -1994,7 +2045,12 @@ class App:
             a = tc["action"]
             if a and a[0] == 'arr_clip' and not self.ui.sheet:
                 tc['long'] = True
+                if a[1:] in self.ui.arr_selection and len(self.ui.arr_selection) > 1:
+                    self.arrangement_group_sheet()
+                    self.dirty.set()
+                    return
                 self.ui.arr_selected = a[1:]
+                self.ui.arr_selection = [a[1:]]
                 self.arrangement_sheet(a[1:])
                 self.dirty.set()
                 return
@@ -2169,12 +2225,19 @@ class App:
         ui, live = self.ui, self.live
         ui.sheet = None
         k = cmd[0]
+        if k == 'arr_group':
+            live.send('/live/arrangement/group', cmd[1], json.dumps(cmd[2],separators=(',',':')))
+            return
+        if k == 'arr_clear':
+            ui.arr_selection, ui.arr_selected = [], None
+            return
         if k == 'arr_clipboard':
             live.send('/live/arrangement/clipboard', *cmd[1:])
             return
         if k == 'arr_history':
             live.song(cmd[1])
             ui.arr_selected = None
+            ui.arr_selection = []
             return
         if k == 'arr_loop':
             live.set_song('loop_start', float(cmd[1]))

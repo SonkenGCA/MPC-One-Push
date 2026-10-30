@@ -1,6 +1,66 @@
 """Guarded arrangement operations; accepts an actual or simulated Live Song."""
 import math
 
+def capture_group(song, selection):
+    """Keep Live object identities as well as metadata so a reordered/deleted source is rejected."""
+    if not isinstance(selection, list) or not 1 <= len(selection) <= 128:
+        raise ValueError('Select between 1 and 128 clips')
+    entries, seen = [], set()
+    for item in selection:
+        t, start, length, name = item
+        t, start, length = int(t), float(start), float(length)
+        key = (t, start, length, str(name))
+        if key in seen:
+            raise ValueError('Duplicate clip in selection')
+        seen.add(key)
+        tr, c = find_clip(song, *key)
+        entries.append((t, tr, c, (c.start_time, c.length, c.name)))
+    return dict(clips=entries, base_track=min(e[0] for e in entries),
+                start=min(e[3][0] for e in entries),
+                end=max(e[3][0]+e[3][1] for e in entries))
+
+def paste_group(song, group, target_track, at):
+    """Preflight the entire group before touching Live; clean up only new copies on failure."""
+    if not math.isfinite(at) or at < 0:
+        raise ValueError('Invalid paste position')
+    plan = []
+    for t, tr, c, fingerprint in group['clips']:
+        if t >= len(song.tracks) or song.tracks[t] != tr or c not in tr.arrangement_clips:
+            raise ValueError('Source tracks/clips changed; copy again')
+        if (c.start_time, c.length, c.name) != fingerprint:
+            raise ValueError('Source clip changed; copy again')
+        dest_index = target_track+t-group['base_track']
+        if not 0 <= dest_index < len(song.tracks):
+            raise ValueError('Not enough destination tracks')
+        dst = song.tracks[dest_index]
+        if tr.is_frozen or bool(dst.has_midi_input) != bool(c.is_midi_clip):
+            raise ValueError('Unfreeze sources and match MIDI/audio destination tracks')
+        dest = at+c.start_time-group['start']
+        empty_destination(song, dst, dest, c.length)
+        for other_dst, _, other_at, other_len in plan:
+            if dst == other_dst and dest < other_at+other_len-1e-5 and dest+c.length > other_at+1e-5:
+                raise ValueError('Selected clips would overlap')
+        plan.append((dst, c, dest, c.length))
+    created = []
+    song.begin_undo_step()
+    try:
+        for dst, c, dest, _ in plan:
+            new = dst.duplicate_clip_to_arrangement(c, dest)
+            created.append((dst, new))
+    except Exception:
+        failed = False
+        for dst, new in reversed(created):
+            try:
+                dst.delete_clip(new)
+            except Exception:
+                failed = True
+        if failed:
+            raise RuntimeError('Copy incomplete; use Undo to remove remaining copies')
+        raise
+    finally:
+        song.end_undo_step()
+    return len(created)
+
 def find_clip(song, track, start, length, name):
     if not 0 <= track < len(song.tracks):
         raise ValueError('Track changed; select the clip again')

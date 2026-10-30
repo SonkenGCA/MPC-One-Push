@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.1 - Arrangement multi-clip selection
+
+Drag from empty lane space or an unselected clip to box-select across tracks. Selected clips
+are outlined and a live count follows the box. Lift to open Copy selection / Duplicate after;
+hold empty space to paste the group. Timing gaps and track offsets are preserved. The entire
+destination is checked before copying, with one Undo step and cleanup of new copies if Live
+rejects a later copy. Ruler dragging still scrolls; single selected clips still drag-move.
+
+49 offline checks pass, including reverse-direction selection, callback wiring, stale sources,
+occupied destinations and rollback. This multi-clip pass has not been tested on physical hardware
+or in a running Live set; the current controller session was left running. Restart Live and the
+controller to load the updated add-on and UI.
+
 ## 0.3.0 - Arrangement thumbnails and touch editing
 
 Arrangement clips now show MIDI notes and local WAV/AIFF waveforms with Live's audio timing map.

@@ -1210,6 +1210,11 @@ class BrowserHandler(AbletonOSCHandler):
                 elif op == 'paste':
                     if clipboard[0] is None:
                         raise ValueError('Copy a clip first')
+                    if isinstance(clipboard[0], dict):
+                        from .arrangement import paste_group
+                        count = paste_group(self.song, clipboard[0], t, float(params[2]))
+                        self.osc_server.send('/live/arrangement/edit', (t, 'Pasted %d clips' % count))
+                        return
                     tr, c, mode, fingerprint = clipboard[0]
                     if tr not in self.song.tracks or c not in tr.arrangement_clips:
                         raise ValueError('Source clip no longer exists; copy again')
@@ -1237,6 +1242,27 @@ class BrowserHandler(AbletonOSCHandler):
                 result = 'error: %s' % e
             self.osc_server.send('/live/arrangement/edit', (t, result))
         self.osc_server.add_handler('/live/arrangement/clipboard', arrangement_clipboard)
+
+        def arrangement_group(params):
+            import json
+            from .arrangement import capture_group, paste_group
+            t = 0
+            try:
+                op, payload = params
+                group = capture_group(self.song, json.loads(str(payload)))
+                t = group['base_track']
+                if op == 'copy':
+                    clipboard[0] = group
+                    result = 'Copied %d clips; hold empty space to paste' % len(group['clips'])
+                elif op == 'duplicate':
+                    count = paste_group(self.song, group, t, group['end'])
+                    result = 'Duplicated %d clips after selection' % count
+                else:
+                    raise ValueError('Unknown group action')
+            except Exception as e:
+                result = 'error: %s' % e
+            self.osc_server.send('/live/arrangement/edit', (t, result))
+        self.osc_server.add_handler('/live/arrangement/group', arrangement_group)
 
         def arrangement_property(params):
             from .arrangement import find_clip

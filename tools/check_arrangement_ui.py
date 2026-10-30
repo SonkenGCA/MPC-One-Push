@@ -1,5 +1,6 @@
 """Arrangement thumbnails, touch gestures and clipboard safety; no hardware connections."""
 import sys
+import json
 import threading
 import time
 import types
@@ -52,11 +53,47 @@ class ArrangementTouch(unittest.TestCase):
         a.touch_up(150+8*a.ui.arr_ppb(),180)
         a.live.send.assert_called_once_with('/live/arrangement/edit',0,0.,4.,'Beat','move',8.)
 
-    def test_unselected_clip_drag_scrolls_without_mutation(self):
+    def test_unselected_clip_drag_selects_without_mutation(self):
         a = self.app
         a.ui.arr_start = 8.
         a.touch_down(200,180); a.touch_move(150,180); a.touch_up(150,180)
+        self.assertEqual(a.ui.arr_start,8.)
+        a.live.send.assert_not_called()
+
+    def test_marquee_selects_multiple_tracks_in_both_directions(self):
+        a = self.app
+        for t in range(2):
+            a.live.tracks[t].arr = dict(name=['A','B'],start_time=[0.,8.],length=[4.,4.])
+        x0, x1 = ui_module.TL_X+2, ui_module.TL_X+10*a.ui.arr_ppb()
+        y0 = engine.MAIN_Y+engine.ARR_RULER_H+8
+        y1 = y0+engine.ARR_LANE_H+25
+        a.hit.return_value = ('drag','arr',0)
+        for first,last in (((x0,y0),(x1,y1)),((x1,y1),(x0,y0))):
+            a.ui.sheet = None
+            a.touch_down(*first);a.touch_move(*last)
+            self.assertEqual(len(a.ui.arr_selection),4)
+            self.assertIsNotNone(a.ui.arr_marquee)
+            a.touch_up(*last)
+            self.assertEqual(a.ui.sheet['title'],'4 clips selected')
+            self.assertIsNone(a.ui.arr_marquee)
+        a.live.send.assert_not_called()
+
+    def test_hold_selected_group_member_preserves_group(self):
+        a = self.app
+        a.ui.arr_selection = [a.action[1:],(1,8.,4.,'Other')]
+        a.touch_down(150,180);a.touch['t']=time.time()-2;a.check_long_press()
+        self.assertEqual(a.ui.sheet['title'],'2 clips selected')
+        a.touch_up(150,180)
+        self.assertEqual(len(a.ui.arr_selection),2)
+        a.live.send.assert_not_called()
+
+    def test_ruler_still_scrolls(self):
+        a = self.app
+        a.hit.return_value = ('drag','arr',-1)
+        a.ui.arr_start = 8.
+        a.touch_down(200,130);a.touch_move(150,130);a.touch_up(150,130)
         self.assertGreater(a.ui.arr_start,8.)
+        self.assertIsNone(a.ui.arr_marquee)
         a.live.send.assert_not_called()
 
     def test_blank_space_hold_paste_location(self):
@@ -92,6 +129,23 @@ class ArrangementTouch(unittest.TestCase):
 
 
 class ArrangementData(unittest.TestCase):
+    def test_group_callbacks_share_single_clipboard_paste_action(self):
+        clips = [NS(start_time=float(i*8),length=4.,name=str(i),is_midi_clip=True) for i in range(2)]
+        tracks = [NS(arrangement_clips=[c],is_frozen=False,has_midi_input=True,
+                     duplicate_clip_to_arrangement=Mock(),delete_clip=Mock()) for c in clips]
+        host = NS(song=NS(tracks=tracks,record_mode=False,begin_undo_step=Mock(),end_undo_step=Mock()),
+                  osc_server=NS(send=Mock()))
+        package = types.ModuleType('testaddon');package.__path__=[]
+        env = {'__package__':'testaddon','self':host,'clipboard':[None]}
+        with patch.dict(sys.modules,{'testaddon':package,'testaddon.arrangement':arrangement}):
+            group = callback('arrangement_group',env)
+            paste = callback('arrangement_clipboard',env)
+            group(('copy',json.dumps([[0,0.,4.,'0'],[1,8.,4.,'1']])))
+            paste(('paste',0,32.))
+            tracks[0].duplicate_clip_to_arrangement.assert_called_once_with(clips[0],32.)
+            tracks[1].duplicate_clip_to_arrangement.assert_called_once_with(clips[1],40.)
+            self.assertEqual(host.osc_server.send.call_args.args[1],(0,'Pasted 2 clips'))
+
     def test_audio_mapping_uses_live_warp_conversion_and_loop(self):
         clip = NS(start_time=8.,length=8.,name='Audio',color=1,muted=False,is_midi_clip=False,
                   start_marker=0.,looping=True,loop_start=0.,loop_end=4.,end_marker=4.,

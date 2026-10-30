@@ -90,6 +90,7 @@ The public package has one launcher: **start-push.bat**, which opens the current
 | Playing options | MENU: Chord (off/major/minor/sevenths/sus/octaves), Velocity (linear/soft/hard), Pressure (poly/channel/mod wheel/off). Chords bypass Drum Rack and 16 Levels |
 | Arrangement clips | Tap to select and set playback start; drag the selected clip to empty space (beat snap, SHIFT for the Clip grid). Hold a clip or SHIFT+tap for Copy/Cut/Paste, Duplicate, Move to playhead, Activate/Deactivate, Loop, Rename, Colour, Undo/Redo and Delete. Hold empty lane space to Paste here |
 | Q-Links | Four current mixer/device parameters; Q-LINK cycles the assigned group |
+| Arrangement multi-select | Drag from empty lane space or an unselected clip to draw a selection box. Lift for Copy selection / Duplicate after. Hold empty space to Paste here; the top selected track anchors the pasted group. Drag the ruler to scroll |
 | Data wheel | Navigate tracks/scenes/browser; SHIFT adjusts tempo |
 | PAD BANK A–D | Note ranges or clip quadrants, depending on pad mode |
 | PLAY / STOP / REC | Transport and recording; SHIFT+REC arms the selected track |
@@ -103,6 +104,8 @@ use the Windows pointer/keyboard and can bring Live to the foreground; keep thos
 
 ## Known limits
 
+Multi-clip copy/paste and Duplicate After support up to 128 clips, preserving track offsets and timing gaps.
+All destinations are checked before any copies are made. Group edits have one Undo step.
 Arrangement resizing, splitting, time-range editing, and overlapping moves are not implemented.
 Moves and pastes require empty space, including no overlap with the source clip. Cut is deferred until
 paste succeeds. The arrangement clipboard references the copied clip and resets on add-on reload;
