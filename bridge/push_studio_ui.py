@@ -197,7 +197,7 @@ class Renderer(base.Renderer):
         for i,(label,cmd) in enumerate(items):
             row,c=divmod(i,cols)
             bx,by=x+24+c*(bw+12), y+84+row*(bh+12)
-            danger=cmd[0].startswith('del_')
+            danger=cmd[0].startswith('del_') or (cmd[0] == 'arr_edit' and cmd[-2] == 'delete')
             cc=RED if danger else TEXT
             d.rounded_rectangle((bx,by,bx+bw,by+bh),4,fill=(25,27,28),outline=scale(RED,.35) if danger else LINE)
             text(d,(bx+16,by+bh//2),label,18 if cols==3 else 16,cc,width=bw-38)

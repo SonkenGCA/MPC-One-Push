@@ -161,6 +161,9 @@ class UiState:
         self.copy_held = False
         self.copy_src = None        # (track, slot) waiting to be pasted into the next slot you tap
         self.note_layout = "chromatic"   # pads playing notes: "chromatic" or "scale" (in key; Drum Racks get drums)
+        self.chord_mode = "off"
+        self.velocity_curve = "linear"
+        self.pressure_mode = "poly"
         self.drum_base = 36         # Drum Rack layout: the note of pad 1 (PAD BANK A-D = 36 / 52 / 68 / 84)
         self.last_drum = ""         # name of the drum pad hit last (header chip)
         self.levels = False         # 16 Levels: all pads play levels_note, pad = velocity
@@ -560,6 +563,11 @@ class Renderer:
                            fill=TEXT, anchor="lm")
             self.target(0, y0, TL_X, y0 + ARR_LANE_H, ("track", t))
             self.target(TL_X, y0, RAIL_X, y0 + ARR_LANE_H, ("drag", "arr", t))
+            if ui.shift:
+                for start, length, name in tr.arrangement_clips():
+                    x0, x1 = max(TL_X, x_of(start)), min(RAIL_X-1, x_of(start+length))
+                    if math.isfinite(x0) and math.isfinite(x1) and x1-x0 >= 8:
+                        self.target(x0, y0+4, x1, y0+ARR_LANE_H-5, ("arr_clip", t, start, length, name))
         # playhead
         x = x_of(live.song_time)
         if TL_X <= x < RAIL_X:
@@ -2015,7 +2023,7 @@ class Renderer:
         for i, (label, cmd) in enumerate(items):
             r, c = divmod(i, cols)
             bx, by = x0 + 24 + c * (bw + 12), y0 + 84 + r * (btn_h + 12)
-            danger = cmd[0].startswith("del_")
+            danger = cmd[0].startswith("del_") or (cmd[0] == "arr_edit" and cmd[-2] == "delete")
             d.rounded_rectangle([bx, by, bx + bw, by + btn_h], 8, fill=CELL,
                                 outline=REC if danger else LINE, width=2)
             d.text((bx + bw // 2, by + btn_h // 2), fit(d, label, f, bw - 20), font=f,

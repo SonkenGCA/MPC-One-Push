@@ -56,6 +56,9 @@ SETTINGS_FILE = os.path.join(HERE, "..", "settings.json")    # your choices, kep
 SETTINGS = ["page", "pads", "pad_base", "note_layout", "drum_base", "full_level", "fixed_len", "rec_to_arr",
             "preview_on", "preview_loop", "repeat_rate", "grid", "clip_mode", "mix_view", "mix_target", "mix_returns",
             "plugin_ui", "arr_follow", "arr_len", "preset_sub"]
+SETTINGS += ["chord_mode", "velocity_curve", "pressure_mode"]
+CHORDS = {"off": (0,), "major": (0, 4, 7), "minor": (0, 3, 7), "seventh": (0, 4, 7, 10),
+          "minor seventh": (0, 3, 7, 10), "sus2": (0, 2, 7), "sus4": (0, 5, 7), "octaves": (0, 12)}
 FRAME_S = 0.04             # at most 25 frames a second
 LED_OFF, LED_DIM, LED_ON = 0, 1, 3
 LONG_PRESS_S = 0.45        # hold a clip, track or scene this long for its action sheet
@@ -108,6 +111,7 @@ class App:
         self.pre_search = None          # where the Browse page was before a search (Back returns there)
         self.last_query = ""
         self.sounding = {}              # pad -> note it's playing (note-off must match even if the octave changed)
+        self.voices = {}                # held chord voices, captured at note-on
         self.repeat_vel = {}            # pad -> velocity for Note Repeat (pad pressure changes it, like the MPC)
         self.last_note = 60             # last note the pads played (16 Levels uses it)
         self.auto_armed = None          # track this app armed for playing (disarmed again when you move on)
@@ -254,6 +258,8 @@ class App:
         choices = {"page": PAGES, "pads": ("play", "launch"), "note_layout": ("chromatic", "scale"),
                    "clip_mode": ("notes", "auto", "details"), "mix_view": ("mix", "sends", "io"),
                    "mix_target": ("vol", "pan"), "fixed_len": FIXED_LENGTHS}
+        choices.update(chord_mode=tuple(CHORDS), velocity_curve=("linear", "soft", "hard"),
+                       pressure_mode=("poly", "channel", "mod wheel", "off"))
         for k in SETTINGS:
             if k in saved and type(saved[k]) is type(getattr(self.ui, k)):
                 value = saved[k]
@@ -575,7 +581,13 @@ class App:
                 pad = PAD_NOTES.index(a)
                 note = self.sounding.get(pad)
                 if note is not None:
-                    self.midi.send(0xA0, note, b)
+                    if self.ui.pressure_mode == "poly":
+                        for voice in self.pad_voices(pad):
+                            self.midi.send(0xA0, voice, b)
+                    elif self.ui.pressure_mode == "channel":
+                        self.midi.send(0xD0, b, 0)
+                    elif self.ui.pressure_mode == "mod wheel":
+                        self.midi.send(0xB0, 1, b)
                     if b > 0 and not self.ui.levels:
                         self.repeat_vel[pad] = b
                 return
@@ -604,15 +616,16 @@ class App:
             if not ui.midi_port and time.time() - self.no_port_toast > 6:
                 self.no_port_toast = time.time()
                 live.toast("Pads need a virtual MIDI port (loopMIDI) to reach Live: see README")
-            old = self.sounding.pop(pad, None)
-            if old is not None:
-                self.midi.send(0x80, old, 0)
+            self.pad_off(pad)
             self.sounding[pad] = note
+            offsets = (0,) if live.drum_pads is not None or ui.levels else CHORDS[ui.chord_mode]
+            self.voices[pad] = tuple(note + n for n in offsets if note + n <= 127)
             if not ui.levels:
                 self.ui.drum_note = note    # samples loaded from Places land on this Drum Rack pad
             if not ui.pad_page <= note < ui.pad_page + 16:      # keep an open Drum Rack's pad page on it
                 ui.pad_page = max(0, min(112, 36 + (note - 36) // 16 * 16))
-            self.midi.send(0x90, note, vel)
+            for voice in self.pad_voices(pad):
+                self.midi.send(0x90, voice, vel)
             return
         if ui.page == "clip":                       # step sequencer: toggle a note on the orange row
             if not live.clip_exists():
@@ -638,9 +651,21 @@ class App:
             live.fire_clip(t, s)
 
     def pad_off(self, pad):
+        notes = self.pad_voices(pad)
         note = self.sounding.pop(pad, None)
+        getattr(self, "voices", {}).pop(pad, None)
         if note is not None:
-            self.midi.send(0x80, note, 0)
+            others = {n for other in self.sounding for n in self.pad_voices(other)}
+            for voice in notes:
+                if voice not in others:
+                    self.midi.send(0x80, voice, 0)
+        if not self.sounding and getattr(self.ui, "pressure_mode", "poly") == "mod wheel":
+            self.midi.send(0xB0, 1, 0)
+
+    def pad_voices(self, pad):
+        if pad not in self.sounding:
+            return ()
+        return getattr(self, "voices", {}).get(pad, (self.sounding[pad],))
 
     def all_notes_off(self):
         for pad in list(self.sounding):
@@ -1245,6 +1270,18 @@ class App:
         kind = action[0]
         if kind == "page":
             self.set_page(action[1])
+        elif kind == "arr_clip":
+            _, t, start, length, name = action
+            bar = live.beats_per_bar()
+            at = (live.song_time // bar) * bar
+            args = (t, start, length, name)
+            ui.sheet = {"title": name or "Arrangement clip", "items": [
+                ("Duplicate after", ("arr_edit", *args, "duplicate", start+length)),
+                ("Copy to playhead", ("arr_edit", *args, "duplicate", at)),
+                ("Move earlier", ("arr_edit", *args, "move", start-length)),
+                ("Move later", ("arr_edit", *args, "move", start+length)),
+                ("Move to playhead", ("arr_edit", *args, "move", at)),
+                ("Delete clip", ("arr_edit", *args, "delete", 0))]}
         elif kind == "pads_mode":
             self.toggle_pads()
         elif kind == "play":
@@ -1869,7 +1906,10 @@ class App:
     def pad_velocity(self, pad, vel):
         if self.ui.levels:
             return max(1, min(127, round(8 + pad * 119 / 15)))
-        return 127 if self.ui.full_level else vel
+        if self.ui.full_level:
+            return 127
+        exponent = {"linear": 1., "soft": .65, "hard": 1.5}[self.ui.velocity_curve]
+        return max(1, min(127, round(127 * (max(1, min(127, vel)) / 127) ** exponent)))
 
     def repeat_loop(self):
         """Note Repeat: while NOTE REPEAT is held (or latched), held pads retrigger every repeat_rate beats,
@@ -1882,7 +1922,8 @@ class App:
                 if now >= item[0]:
                     offs.remove(item)
                     if self.sounding.get(item[1]) == item[2]:
-                        self.midi.send(0x80, item[2], 0)
+                        for voice in self.pad_voices(item[1]):
+                            self.midi.send(0x80, voice, 0)
             active = (ui.repeat_held or ui.repeat_latch) and ui.pad_mode() == "play" and self.sounding
             if not active:
                 next_t = None
@@ -1900,8 +1941,9 @@ class App:
             if now >= next_t:
                 with self.lock:
                     for p, n in list(self.sounding.items()):
-                        self.midi.send(0x80, n, 0)
-                        self.midi.send(0x90, n, self.repeat_vel.get(p, 100))
+                        for voice in self.pad_voices(p):
+                            self.midi.send(0x80, voice, 0)
+                            self.midi.send(0x90, voice, self.repeat_vel.get(p, 100))
                         offs.append((now + period * GATE, p, n))
                 next_t += period
                 if next_t < now:
@@ -2027,6 +2069,9 @@ class App:
             ("Save set", ("save",)), ("Save set as...", ("save_as",)), ("Open set...", ("open_list", 0)),
             ("New set", ("new_set",)), ("Export audio...", ("export",)), ("Capture MIDI", ("capture_midi",)),
             (fixed, ("fixed",)),
+            ("Chord: " + ui.chord_mode, ("play_option", "chord_mode")),
+            ("Velocity: " + ui.velocity_curve, ("play_option", "velocity_curve")),
+            ("Pressure: " + ui.pressure_mode, ("play_option", "pressure_mode")),
             ("Recordings to arrangement: %s" % ("on" if ui.rec_to_arr else "off"), ("rec_to_arr",)),
             ("Pads: %s" % ("in key" if ui.note_layout == "scale" else "chromatic"), ("layout",)),
             ("Key: %s" % NOTE_NAMES[self.live.scale[0] % 12], ("key_pick",)),
@@ -2040,6 +2085,18 @@ class App:
         ui, live = self.ui, self.live
         ui.sheet = None
         k = cmd[0]
+        if k == "arr_edit":
+            live.send("/live/arrangement/edit", *cmd[1:])
+            return
+        if k == "play_option":
+            choices = {"chord_mode": tuple(CHORDS), "velocity_curve": ("linear", "soft", "hard"),
+                       "pressure_mode": ("poly", "channel", "mod wheel", "off")}
+            key = cmd[1]
+            self.all_notes_off()
+            values = choices[key]
+            setattr(ui, key, values[(values.index(getattr(ui, key)) + 1) % len(values)])
+            self.open_menu()
+            return
         if k == "rename":
             what = cmd[1]
             ui.kb = {"what": what, "text": self.name_of(what), "caps": False, "title": "Rename " + {

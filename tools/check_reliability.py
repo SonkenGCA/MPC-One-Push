@@ -18,6 +18,7 @@ class Reliability(unittest.TestCase):
     def test_startup_failure_releases_resources_and_notes(self):
         from unittest.mock import Mock
         app = engine.App.__new__(engine.App)
+        app.ui = push_ui.UiState()
         app.lock, app.sounding, app.quit = threading.RLock(), {0: 60}, False
         app.midi, app.live, app.previewer, app.clicker = Mock(), Mock(), Mock(), Mock()
         app._run_session = Mock(side_effect=OSError('device unavailable'))

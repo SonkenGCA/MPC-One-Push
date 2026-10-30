@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — Playing and arrangement editing
+
+Added chord modes, soft/hard velocity response and pressure routing (poly/channel/mod wheel/off).
+Held chord voicings are captured so octave/mode changes cannot leave their notes stuck.
+Drum Rack and 16 Levels bypass chords. Added SHIFT+tap arrangement actions: duplicate, delete,
+move earlier/later or to the playhead. Occupied destinations, stale selections, frozen tracks and
+recording are rejected; edits are grouped for Undo. These additions have offline test coverage;
+real pad/Live-set validation is pending.
+
 ## 0.1.2 — Setup and shutdown
 
 The single launcher now creates its Python environment and installs Pillow when needed.

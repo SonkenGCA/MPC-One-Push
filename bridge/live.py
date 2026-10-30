@@ -754,6 +754,13 @@ class Live:
         """Copy a Session clip into its track's arrangement at beat `at` (-1 = the bar the playhead is in)."""
         self.send("/live/clip/to_arrangement", t, s, float(at))
 
+    def _on_live_arrangement_edit(self, v):
+        t, result = int(v[0]), str(v[1])
+        self.toast("Arrangement updated" if result == "ok" else result)
+        if result == "ok":
+            for prop in ("name", "start_time", "length"):
+                self.send("/live/track/get/arrangement_clips/" + prop, t)
+
     def _on_live_clip_to_arrangement(self, v):
         if len(v) >= 4 and v[2] == "ok":
             self.toast("In the arrangement too: %s, bar %d" % (self.track_name(v[0]), int(v[3] // self.beats_per_bar()) + 1))

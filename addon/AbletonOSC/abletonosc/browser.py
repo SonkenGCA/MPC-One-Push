@@ -1125,6 +1125,17 @@ class BrowserHandler(AbletonOSCHandler):
         self.osc_server.add_handler("/live/song/get/recording_clips", recording_clips)
         self.osc_server.add_handler("/live/clip/to_arrangement", clip_to_arrangement)
 
+        def arrangement_edit(params):
+            from .arrangement import edit
+            t, start, length, name, op, dest = params
+            try:
+                edit(self.song, int(t), float(start), float(length), str(name), str(op), float(dest))
+                result = "ok"
+            except Exception as e:
+                result = "error: %s" % e
+            self.osc_server.send("/live/arrangement/edit", (int(t), result))
+        self.osc_server.add_handler("/live/arrangement/edit", arrangement_edit)
+
         def dev_presets(params: Tuple[Any]):
             """/live/dev/get/presets (track, device path): a plug-in's own presets / programs.
             Replies (track, path, selected index, names...); just (track, path, -1) if it has none."""

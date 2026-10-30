@@ -11,8 +11,8 @@ more field testing. This is a Windows host application, not standalone MPC firmw
 
 ## What works
 
-- Session clips/scenes, track management, fixed-length recording, playable pads, scales and Note Repeat.
-- Arrangement overview, recording, loop controls and copying Session clips into the arrangement.
+- Session clips/scenes, track management, fixed-length recording, playable pads, scales, chords, velocity curves, pressure routing and Note Repeat.
+- Arrangement overview, recording, loop controls, Session clip copying, and guarded clip move/duplicate/delete.
 - Piano roll, clip automation, audio/MIDI clip details and note tools.
 - Mixer with meters, sends, returns, main volume and input/output routing.
 - Device chains, racks, 66 stock device parameter layouts, EQ/filter/synth/effect visualizations,
@@ -83,6 +83,8 @@ The public package has one launcher: **start-push.bat**, which opens the current
 | MAIN / NEXT SEQ / STEP SEQ | Session / Arrangement / Clip |
 | TRACK MIX / PROGRAM EDIT / BROWSE | Mixer / Device / Browser |
 | Pads | Play notes; TRACK MUTE toggles clip launch mode; Clip page uses step sequencing |
+| Playing options | MENU: Chord (off/major/minor/sevenths/sus/octaves), Velocity (linear/soft/hard), Pressure (poly/channel/mod wheel/off). Chords bypass Drum Rack and 16 Levels |
+| Arrangement clips | SHIFT+tap a clip: duplicate after, copy/move to playhead, move earlier/later by its length, or delete. Destinations must be empty; UNDO reverses an edit |
 | Q-Links | Four current mixer/device parameters; Q-LINK cycles the assigned group |
 | Data wheel | Navigate tracks/scenes/browser; SHIFT adjusts tempo |
 | PAD BANK A–D | Note ranges or clip quadrants, depending on pad mode |
@@ -97,8 +99,9 @@ use the Windows pointer/keyboard and can bring Live to the foreground; keep thos
 
 ## Known limits
 
-Arrangement editing is currently an overview and recording workflow; full cut/split/move editing is
-unfinished. Large plug-ins may expose no parameters until configured in Live. Some plug-ins only expose
+Arrangement clip move/duplicate/delete is implemented with occupied-destination checks; cut/split and
+time-range editing remain unfinished. New chord/pressure and arrangement operations have offline test
+coverage; physical pad testing and edits in a real Live set remain pending. Large plug-ins may expose no parameters until configured in Live. Some plug-ins only expose
 a Default program. Places preview supports WAV/AIFF, and the API limits some preset and sample workflows.
 Note Repeat has offline timing coverage but needs more hardware testing. Musical work should be saved
 regularly through Live. No zero-risk hardware compatibility claim is made.
@@ -108,6 +111,8 @@ regularly through Live. No zero-risk hardware compatibility claim is made.
 ```powershell
 .\.venv\Scripts\python.exe tools/check_push_studio.py
 .\.venv\Scripts\python.exe tools/check_reliability.py
+.\.venv\Scripts\python.exe tools/check_playing.py
+.\.venv\Scripts\python.exe tools/check_arrangement.py
 ```
 
 These checks use simulated state, never open the MPC, and never edit the user's Live set.
