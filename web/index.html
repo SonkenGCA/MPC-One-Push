@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#111214">
+<title>MPC One Push</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header id="transport">
+  <button id="t-play" class="tbtn" title="Play / Stop">▶</button>
+  <button id="t-stop" class="tbtn" title="Stop">■</button>
+  <button id="t-rec" class="tbtn rec" title="Session record">●</button>
+  <button id="t-metro" class="tbtn" title="Metronome">♩</button>
+  <div id="t-tempo" class="tempo" title="Drag up/down to change tempo, double-tap to tap tempo"><span id="t-bpm">120.00</span><small>BPM</small></div>
+  <button id="t-undo" class="tbtn" title="Undo">↶</button>
+  <button id="t-redo" class="tbtn" title="Redo">↷</button>
+  <button id="t-stopall" class="tbtn wide" title="Stop all clips">Stop all</button>
+  <div class="spacer"></div>
+  <div id="t-track" class="seltrack">–</div>
+  <div id="conn" class="conn bad" title="Connection to Ableton">●</div>
+  <button id="t-full" class="tbtn" title="Full screen">⛶</button>
+</header>
+
+<main>
+  <section id="page-session" class="page active">
+    <div id="grid" class="grid"></div>
+  </section>
+
+  <section id="page-mixer" class="page">
+    <div id="mixer" class="mixer"></div>
+  </section>
+
+  <section id="page-device" class="page">
+    <div class="dev-head">
+      <div id="dev-chain" class="chain"></div>
+    </div>
+    <div class="dev-sub">
+      <button id="dev-on" class="pill">On</button>
+      <div id="dev-name" class="dev-name">No device</div>
+      <button id="dev-prev" class="pill">‹ Bank</button>
+      <span id="dev-bank" class="bank">1/1</span>
+      <button id="dev-next" class="pill">Bank ›</button>
+    </div>
+    <div id="params" class="params"></div>
+  </section>
+
+  <section id="page-browser" class="page">
+    <div class="br-head">
+      <button id="br-up" class="pill">‹ Back</button>
+      <div id="br-path" class="br-path">Browser</div>
+      <div class="br-hint">Tap an item to load it on the selected track</div>
+    </div>
+    <div id="br-list" class="br-list"></div>
+  </section>
+
+  <section id="page-help" class="page">
+    <div class="help">
+      <h2>Not connected to Ableton</h2>
+      <ol>
+        <li>Open Ableton Live.</li>
+        <li>Settings → Link, Tempo &amp; MIDI → set an empty <b>Control Surface</b> slot to <b>AbletonOSC</b>.</li>
+        <li>Live's status bar should say “AbletonOSC: Listening for OSC on port 11000”.</li>
+        <li>Keep <code>start-bridge.bat</code> running on the PC.</li>
+      </ol>
+    </div>
+  </section>
+</main>
+
+<nav id="tabs">
+  <button data-page="session" class="tab active">Session</button>
+  <button data-page="mixer" class="tab">Mixer</button>
+  <button data-page="device" class="tab">Device</button>
+  <button data-page="browser" class="tab">Browser</button>
+</nav>
+
+<div id="toast" class="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>

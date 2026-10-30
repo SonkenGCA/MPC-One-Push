@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+logs/
+settings.json
+backups/
+.env
+.env.*
+*.log
+.settings-*.tmp
+design/push-studio/preview/
