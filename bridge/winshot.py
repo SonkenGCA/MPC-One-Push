@@ -242,6 +242,9 @@ def live_dialog():
     return None
 
 
+def is_foreground(hwnd):
+    return bool(hwnd) and _user32.GetForegroundWindow()==hwnd
+
 def focus(hwnd):
     """Bring a window to the front. Windows only lets a background program do that right after a key
     event, hence the Alt tap. Returns True if it worked."""

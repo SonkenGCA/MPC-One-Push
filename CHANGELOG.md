@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased - Native Arrangement automation preview
+
+Implemented a Windows accessibility + live-window fallback for Arrangement automation.
+Hold a parameter and choose Show automation: Live selects the track/device, then the UI worker
+finds the matching accessible control and invokes Show Automation. The MPC displays Live's real
+Arrangement editor, with direct touch editing, Draw/Edit, Undo/Redo, zoom and viewport navigation.
+Main/return mixer controls and tempo route to this native path. Ambiguous or missing controls
+produce an error with no pointer target. Changing focus/view cancels setup. Window resize cancels
+a held drag. Native view bypasses visual transitions to keep pixels aligned with touch targets.
+Session envelope editing continues through the native envelope API.
+
+Arrangement/Session navigation now also selects Live's corresponding main view. Polling detects
+main-view changes made on the PC and chooses the matching automation editor.
+
+VERIFICATION: offline selector/mapping/gesture/transport tests pass. This native path is NOT yet
+verified end to end on the live desktop or MPC. The computer-use screenshot helper repeatedly
+timed out, and Live stopped answering OSC during the backend smoke test. No successful native
+Arrangement drawing test is claimed. Restart Live and run the pending end-to-end check before
+calling this feature complete. English accessibility labels are currently required.
+
 ## 0.4.0 - Parameter automation shortcuts and Arrangement sync
 
 Hold a device parameter or track volume/pan/send control, then choose Show automation.

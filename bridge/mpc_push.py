@@ -212,6 +212,9 @@ class App:
         while not self.quit:
             time.sleep(0.16)
             ui, live, r = self.ui, self.live, self.renderer
+            if ui.native_automation:
+                self.native_automation_capture()
+                continue
             dev = live.dev
             info = dev.selected_info() if dev.names else ("",)
             if ui.page != "device" or dev.view != "devices" or not ui.plugin_ui or info[0] not in \
@@ -236,6 +239,53 @@ class App:
                                             Image.BILINEAR)
                 r.plugin_hwnd, r.plugin_scale = hwnd, s
             self.dirty.set()
+
+    def native_automation_capture(self):
+        from PIL import Image
+        import winshot
+        r,ui,live=self.renderer,self.ui,self.live
+        result=live.native_automation_result
+        if result is None:return
+        if result.get('error'):
+            ui.native_error=result['error'];return
+        try:
+            import uiautomation as auto
+            from native_automation import NativeAutomation,crop_view
+            with auto.UIAutomationInitializerInThread():
+                hwnd,_=winshot.live_main_window()
+                if not hwnd:raise ValueError('Live main window is not available')
+                native=NativeAutomation(hwnd)
+                token=live.automation_token
+                if getattr(self,'_native_opened',None)!=token:
+                    # A failed selection is not retried behind the user's back.
+                    self._native_opened=token
+                    self._native_ready=False
+                    native.open(result,lambda:ui.native_automation and live.automation_token==token)
+                    self._native_ready=True
+                if not self._native_ready:return
+                if not ui.native_automation or live.automation_token!=token:return
+                img=winshot.capture(hwnd)
+                if img is None:raise ValueError('Live window could not be captured')
+                area=crop_view(native.area(),img.size,ui.native_zoom,ui.native_center)
+                image=img.crop(area)
+                scale=min((RAIL_X-24)/image.width,(720-MAIN_Y-24)/image.height)
+                frame=image.resize((max(1,int(image.width*scale)),max(1,int(image.height*scale))),Image.Resampling.BILINEAR)
+                r.native_frame=(frame,area,scale,hwnd,img.size,token)
+                ui.native_error=None
+                if time.monotonic()-getattr(self,'_native_poll_at',0)>1:
+                    live.send('/live/automation/draw_mode')
+                    self._native_poll_at=time.monotonic()
+        except Exception as e:
+            r.native_frame=None
+            ui.native_error=str(e)
+        self.dirty.set()
+
+    def native_xy(self,x,y):
+        from native_automation import point_to_window
+        snapshot=self.touch.get('native') if self.touch else None
+        if snapshot is None:raise ValueError('Native Live image is no longer available')
+        frame,crop,scale,hwnd,size,token,place=snapshot
+        return point_to_window(x,y,place,scale,crop,frame.size)
 
     def user_quit(self):
         """Quit because you asked (SHIFT+MENU / MENU > Quit): auto-start then waits until the MPC is unplugged
@@ -392,7 +442,7 @@ class App:
 
     def frame(self):
         with self.lock:
-            self.live.mode = self.ui.page
+            self.live.mode = 'arrange' if self.ui.native_automation else self.ui.page
             self.live.view_tracks = (self.ui.bank, self.ui.bank + COLS)
             self.live.arr_view = (self.ui.arr_start, self.ui.arr_start+self.ui.arr_len)
             self.live.mix_view, self.live.mix_returns = self.ui.mix_view, self.ui.mix_returns
@@ -540,7 +590,7 @@ class App:
         ui, live = self.ui, self.live
         page_btn = PAGE_BUTTONS
         state = {
-            "PLAY": live.playing, "REC": live.rec_mode if ui.page == "arrange" else live.rec,
+            "PLAY": live.playing, "REC": live.rec_mode if ui.page == "arrange" or ui.native_automation else live.rec,
             "OVERDUB": live.overdub, "SHIFT": ui.shift, "MENU": ui.help or bool(ui.sheet),
             "ERASE": ui.erase_held, "COPY": ui.copy_held or bool(ui.copy_src),
             "NOTE REPEAT": ui.repeat_held or ui.repeat_latch, "16 LEVEL": ui.levels,
@@ -745,14 +795,14 @@ class App:
             else:
                 self.open_menu()
         elif name == "PLAY":
-            if ui.page == 'arrange' and not live.playing:
+            if (ui.page == 'arrange' or ui.native_automation) and not live.playing:
                 live.prepare_arrangement()
             live.song("stop_playing" if live.playing else "start_playing")
             live.playing = not live.playing
         elif name == "STOP":
             live.song("stop_all_clips" if ui.shift else "stop_playing")
         elif name == "PLAY START":
-            if ui.page == 'arrange':
+            if ui.page == 'arrange' or ui.native_automation:
                 live.prepare_arrangement()
             live.set_song_time(0.0)
             live.song("start_playing")
@@ -760,7 +810,7 @@ class App:
             if 0 <= live.sel < len(live.tracks):
                 live.toggle("arm", live.sel)
         elif name == "REC":
-            if ui.page == "arrange":
+            if ui.page == "arrange" or ui.native_automation:
                 live.toggle_rec_mode()
             elif ui.fixed_len and 0 <= live.sel < len(live.tracks) and live.tracks[live.sel].armable:
                 self.record_next(live.sel)
@@ -1030,7 +1080,13 @@ class App:
             self.ui.arr_follow = False
         if action and action[:2] == ('drag','arr'):
             self.ui.arr_follow = False
-        if action and action[:2] == ('drag','parameter_env'):
+        if action and action[:2] == ('drag','native'):
+            snapshot=self.renderer.native_touch
+            self.touch['native']=snapshot
+            if snapshot:
+                why=self.clicker.down(snapshot[3],*self.native_xy(x,y))
+                if why:self.live.toast(why)
+        elif action and action[:2] == ('drag','parameter_env'):
             self.parameter_env_draw(x,y)
         elif action and action[:2] == ("drag", "env"):
             self.env_draw_at(x, y)
@@ -1076,6 +1132,16 @@ class App:
             tc["moved"] = True
         action, v0 = tc["action"], tc["start"]
         if tc.get('long'):
+            return
+        if action and action[:2] == ('drag','native'):
+            snapshot=tc.get('native')
+            if snapshot and self.renderer.native_frame and self.renderer.native_frame[4]==snapshot[4]:
+                # Clamp a finger that drifts off the image to its last valid pixel.
+                frame,_,_,_,_,_,place=snapshot
+                px=max(place[0],min(place[0]+frame.width-1,x))
+                py=max(place[1],min(place[1]+frame.height-1,y))
+                self.clicker.move(*self.native_xy(px,py))
+            else:self.clicker.up()
             return
         if action and action[:2] == ('drag','parameter_env'):
             self.parameter_env_draw(x,y)
@@ -1178,6 +1244,8 @@ class App:
             return None
         kind,index=action[1:3]
         live=self.live
+        if kind=='tempo':
+            return dict(track=0,scope='master',kind='tempo',track_name=live.master.name,param_name='Tempo')
         if kind=='param':
             dev=live.dev
             if not 0 <= index < len(dev.pnames):return None
@@ -1186,13 +1254,15 @@ class App:
         elif kind in ('vol','pan','send'):
             key=index[0] if kind=='send' else strip_key(index)
             key=strip_key(key)
-            if key[0]!='track':
-                live.toast('Return/master envelopes are not exposed by the clip automation API')
-                return None
-            target=dict(track=key[1],kind={'vol':'volume','pan':'panning','send':'send'}[kind])
+            target=dict(track=key[1],scope=key[0],kind={'vol':'volume','pan':'panning','send':'send'}[kind])
             if kind=='send':target['param']=index[1]
         else:return None
         t=target['track']
+        if target.get('scope','track')!='track':
+            strip=live.strip((target['scope'],t))
+            if strip is None:return None
+            target['track_name']=strip.name
+            return target
         if not 0 <= t < len(live.tracks):return None
         target['track_name']=live.tracks[t].name
         return target
@@ -1214,13 +1284,17 @@ class App:
     def open_parameter_automation(self,target):
         live,ui=self.live,self.ui
         t=target['track']
-        if ui.automation_arrangement:
-            selection=ui.arr_selected
-            clip = selection[1:] if selection and selection[0]==t else next(
-                (c for c in live.tracks[t].arrangement_clips() if c[0]<=live.song_time<c[0]+c[1]),None)
-            if clip is None:
-                live.toast('Select an Arrangement clip on this track first');return
-            target={**target,'arr':clip}
+        arrangement_context=ui.automation_arrangement if live.native_arrangement_visible is None else live.native_arrangement_visible
+        if arrangement_context or target.get('scope','track')!='track':
+            self.automation_return=ui.page
+            live.automation_token+=1
+            live.automation_target=None
+            live.native_automation_result=None
+            ui.native_automation=ui.parameter_automation=True
+            ui.native_error=None;ui.native_zoom=1.;ui.native_center=(.5,.5)
+            ui.page=live.mode='clip'
+            live.send('/live/automation/native',str(live.automation_token),json.dumps(target))
+            return
         else:
             slot=live.clip[1] if live.clip and live.clip[0]==t else self.pick_clip(t)
             clips=live.tracks[t].clips
@@ -1333,6 +1407,9 @@ class App:
         if not tc:
             return
         action = tc["action"]
+        if action and action[:2]==('drag','native'):
+            self.clicker.up()
+            return
         if self.ui.arr_marquee is not None:
             self.ui.arr_marquee = None
             if self.ui.arr_selection:
@@ -1432,6 +1509,18 @@ class App:
     def tap(self, action):
         ui, live = self.ui, self.live
         kind = action[0]
+        if kind=='native_control':
+            op=action[1]
+            if op=='draw':
+                live.send('/live/automation/draw_mode',int(not live.native_draw_mode))
+            elif op in ('undo','redo'):live.song(op)
+            elif op=='zoom':ui.native_zoom=2. if ui.native_zoom==1. else 1.
+            elif op=='retry':
+                self._native_opened=None;ui.native_error=None
+            else:
+                dx,dy={'left':(-.2,0),'right':(.2,0),'up':(0,-.2),'down':(0,.2)}[op]
+                ui.native_center=(max(0.,min(1.,ui.native_center[0]+dx)),max(0.,min(1.,ui.native_center[1]+dy)))
+            return
         if kind == 'automation_back':
             live.automation_target=None;live.automation_data=None
             self.set_page(getattr(self,'automation_return','arrange'))
@@ -1743,8 +1832,11 @@ class App:
         ui.page = page
         if page in ('arrange','session'):
             ui.automation_arrangement=page=='arrange'
+            live.native_arrangement_visible=page=='arrange'
+            live.send('/live/automation/view',page)
         live.automation_target=None
         ui.parameter_automation=False
+        ui.native_automation=False
         live.mode = page
         ui.help = False
         if page == 'arrange':
@@ -2142,7 +2234,7 @@ class App:
             if not tc or tc["moved"] or tc.get("long") or time.time() - tc["t"] < LONG_PRESS_S:
                 return
             a = tc["action"]
-            if a and a[0]=='drag' and a[1] in ('param','vol','pan','send'):
+            if a and a[0]=='drag' and a[1] in ('param','vol','pan','send','tempo'):
                 if self.automation_hold_menu():return
             if a and a[0] == 'arr_clip' and not self.ui.sheet:
                 tc['long'] = True

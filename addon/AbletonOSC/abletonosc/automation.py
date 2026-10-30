@@ -1,21 +1,14 @@
 """Resolve a clip and parameter with stale-selection guards before envelope edits."""
 import math
 
-def resolve(song, target):
+def parameter(song,target):
     ti=int(target['track'])
-    if not 0 <= ti < len(song.tracks):raise ValueError('Track no longer exists')
-    tr = song.tracks[ti]
+    scope=target.get('scope','track')
+    tracks=song.tracks if scope=='track' else song.return_tracks if scope=='return' else [song.master_track] if scope=='master' else []
+    if not 0 <= ti < len(tracks):raise ValueError('Track no longer exists')
+    tr = tracks[ti]
     if tr.name != target['track_name']:
         raise ValueError('Track changed; select the parameter again')
-    if 'arr' in target:
-        raise ValueError('Live does not expose Arrangement automation envelopes. Record Q-Link movements with Automation Arm; drawing is available for Session clip envelopes.')
-    else:
-        slot=int(target['slot'])
-        if not 0 <= slot < len(tr.clip_slots):raise ValueError('Clip slot no longer exists')
-        clip = tr.clip_slots[slot].clip
-        if clip is None or clip.name != target['clip_name']:
-            raise ValueError('Clip changed; select the parameter again')
-        a, b = clip.loop_start, clip.loop_end
     kind = target['kind']
     if kind == 'device':
         dev = tr
@@ -31,7 +24,17 @@ def resolve(song, target):
         raise ValueError('Parameter changed; select it again')
     if not getattr(param,'is_enabled',True) or not getattr(param,'is_automatable',True):
         raise ValueError('Live does not allow automation of this parameter')
-    return tr, clip, param, float(a), float(b)
+    return tr,param
+
+def resolve(song,target):
+    tr,param=parameter(song,target)
+    if 'arr' in target:
+        raise ValueError('Use the native Arrangement automation editor for this parameter')
+    slot=int(target['slot'])
+    if not 0 <= slot < len(tr.clip_slots):raise ValueError('Clip slot no longer exists')
+    clip=tr.clip_slots[slot].clip
+    if clip is None or clip.name!=target['clip_name']:raise ValueError('Clip changed; select the parameter again')
+    return tr,clip,param,float(clip.loop_start),float(clip.loop_end)
 
 def execute(song, target, op, values=()):
     tr, clip, prm, a, b = resolve(song,target)

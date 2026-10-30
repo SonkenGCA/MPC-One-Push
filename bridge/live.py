@@ -194,6 +194,9 @@ class Live:
         self.automation_target = None
         self.automation_data = None
         self.automation_token = 0
+        self.native_automation_result = None
+        self.native_draw_mode = False
+        self.native_arrangement_visible = None
         self.env_key = (-1, 0)           # which parameter the automation lane shows; (-1, 0/1) = volume/pan
         self.auto_arm = False            # Live's Automation Arm (session_automation_record)
         self.last_msg = 0.0
@@ -340,6 +343,7 @@ class Live:
             if tick % 20 == 0:
                 self.send("/live/song/get/session_automation_record")
                 self.send("/live/mixer/get/main_controls")
+                self.send('/live/automation/context')
                 self.send("/live/song/get/count_in_duration")
             if self.mode == 'clip' and self.automation_target:
                 if tick % 10 == 0 and not self.held('env'):
@@ -690,6 +694,18 @@ class Live:
         t = v[0] if v else -1
         if isinstance(t, int) and 0 <= t < len(self.tracks):
             self.tracks[t].arr[key] = list(v[1:])
+
+    def _on_live_automation_context(self,v):
+        self.native_arrangement_visible=bool(v[0])
+        self.native_draw_mode=bool(v[1])
+
+    def _on_live_automation_native(self,v):
+        if str(v[0])==str(self.automation_token):
+            self.native_automation_result=json.loads(v[1])
+            self.native_draw_mode=bool(self.native_automation_result.get('draw_mode',False))
+
+    def _on_live_automation_draw_mode(self,v):
+        self.native_draw_mode=bool(v[0])
 
     def request_automation(self, op='get', values=()):
         self.send('/live/automation',str(self.automation_token),op,

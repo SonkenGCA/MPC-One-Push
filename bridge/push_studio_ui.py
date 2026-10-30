@@ -83,7 +83,7 @@ class Renderer(base.Renderer):
             self._press = None
         elapsed = self._now - self._scene_at
         # Keep mirrored windows, recording indicators and transport unfiltered.
-        mirrored_plugin = ui.page == 'device' and ui.plugin_ui and self.plugin_frame is not None
+        mirrored_plugin = (ui.page == 'device' and ui.plugin_ui and self.plugin_frame is not None) or ui.native_automation
         if self.motion and 0 <= elapsed < .18 and not overlay and not mirrored_plugin:
             area = (0, UP_Y, W, LOW_Y)
             amount = 1 - (1 - elapsed / .18) ** 3
@@ -238,7 +238,7 @@ class Renderer(base.Renderer):
         else:
             self._tab = float(wanted)
         d.rectangle((round(self._tab) + 20, 49, round(self._tab) + 80, 51), fill=TEXT)
-        rec = live.rec_mode if ui.page == 'arrange' else live.rec
+        rec = live.rec_mode if ui.page == 'arrange' or ui.native_automation else live.rec
         d.ellipse((938, 18, 954, 34), fill=RED if rec else None, outline=RED if rec else DIM, width=2)
         self.target(922, 0, 970, HEAD_H, ('rec',))
         mc = AMBER if live.metro else FAINT

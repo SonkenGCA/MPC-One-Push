@@ -183,6 +183,10 @@ class UiState:
         self.arr_marquee = None    # screen-space selection rectangle during a drag
         self.automation_arrangement = False
         self.parameter_automation = False
+        self.native_automation = False
+        self.native_error = None
+        self.native_zoom = 1.
+        self.native_center = (.5,.5)
         self.arr_len = 64.0         # beats in view (zoom)
         self.arr_follow = True      # scroll along with the playhead
         self.clip_mode = "notes"    # clip page: "notes" (piano roll) or "auto" (automation lane)
@@ -262,6 +266,8 @@ class Renderer:
         self.wave_geom = None       # Simpler waveform on screen: (left x, width, sample length, top, bottom)
         self.wave_cache = {}        # (file, columns) -> peaks, None while reading, or "error: ..."
         self.plugin_frame = None    # latest capture of the selected plug-in's window, scaled to fit (app thread)
+        self.native_frame = None
+        self.native_touch = None
         self.plugin_hwnd, self.plugin_scale, self.plugin_place = None, 1.0, (0, 0)
 
     def target(self, x0, y0, x1, y1, action):
@@ -347,7 +353,7 @@ class Renderer:
         d.ellipse([mx + 20, 17, mx + 26, 23], fill=mc)
         self.target(mx - 14, 0, mx + 36, HEAD_H, ("metro",))
         rx = W - 300
-        rec = live.rec_mode if ui.page == "arrange" else live.rec     # REC is arrangement record on that page
+        rec = live.rec_mode if ui.page == "arrange" or ui.native_automation else live.rec     # REC is arrangement record on that page
         d.ellipse([rx, 15, rx + 22, 37], fill=REC if rec else None, outline=REC if rec else FAINT, width=3)
         self.target(rx - 14, 0, rx + 36, HEAD_H, ("rec",))
 
@@ -673,6 +679,8 @@ class Renderer:
     # ------------------------------------------------------------ clip (piano roll + automation)
 
     def _page_clip(self, d, live, ui):
+        if ui.native_automation:
+            return self._page_native_automation(d,live,ui)
         if live.automation_target:
             return self._page_parameter_automation(d,live,ui)
         auto = ui.clip_mode == "auto"
@@ -929,6 +937,30 @@ class Renderer:
                 keys.append(((dev.idx, p), dev.pnames[p] if p < len(dev.pnames) else "?"))
         for i, (key, label) in enumerate(keys[:5]):
             self._soft(d, i + 2, label, active=tuple(live.env_key) == key, action=("clip", "env_key", key))
+
+    def _page_native_automation(self,d,live,ui):
+        for i,(label,op) in enumerate((('BACK','back'),('DRAW','draw'),('UNDO','undo'),('REDO','redo'),
+                                      ('ZOOM','zoom'),('UP','up'),('DOWN','down'),('RETRY','retry'))):
+            self._soft(d,i,label,active=op=='draw' and live.native_draw_mode,
+                       action=('automation_back',) if op=='back' else ('native_control',op))
+        self.native_touch=None
+        if ui.native_error:
+            d.text((28,MAIN_Y+65),'Live automation could not be opened',font=font(26),fill=TEXT)
+            d.text((28,MAIN_Y+115),fit(d,ui.native_error,font(19),W-60),font=font(19),fill=DIM)
+            return
+        data=self.native_frame
+        if not data or data[5]!=live.automation_token:
+            d.text((40,MAIN_Y+75),'Opening automation in Live…',font=font(26),fill=DIM)
+            return
+        frame,crop,scale,hwnd,size,token=data
+        px,py=12+(RAIL_X-24-frame.width)//2,MAIN_Y+12+(720-MAIN_Y-24-frame.height)//2
+        d._image.paste(frame,(px,py))
+        self.native_touch=(*data,(px,py))
+        self.target(px,py,px+frame.width,py+frame.height,('drag','native',token))
+        for j,op in enumerate(('left','right')):
+            y=MAIN_Y+j*MAIN_H//2
+            d.text((RAIL_X+40,y+MAIN_H//4),'‹' if j==0 else '›',font=font(34),fill=TEXT,anchor='mm')
+            self.target(RAIL_X,y,W,y+MAIN_H//2,('native_control',op))
 
     def _page_parameter_automation(self,d,live,ui):
         self._soft(d,0,'BACK',action=('automation_back',))

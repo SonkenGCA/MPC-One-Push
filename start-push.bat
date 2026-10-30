@@ -8,9 +8,9 @@ if not exist ".venv\Scripts\python.exe" (
   py -3 -m venv .venv
   if errorlevel 1 goto setup_error
 )
-.venv\Scripts\python.exe -c "import PIL" >nul 2>&1
+.venv\Scripts\python.exe -c "import PIL, uiautomation" >nul 2>&1
 if errorlevel 1 (
-  echo Installing the required Pillow package...
+  echo Installing the required controller packages...
   .venv\Scripts\python.exe -m pip install -r requirements.txt
   if errorlevel 1 goto setup_error
 )

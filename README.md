@@ -90,7 +90,7 @@ The public package has one launcher: **start-push.bat**, which opens the current
 | Playing options | MENU: Chord (off/major/minor/sevenths/sus/octaves), Velocity (linear/soft/hard), Pressure (poly/channel/mod wheel/off). Chords bypass Drum Rack and 16 Levels |
 | Arrangement clips | Tap to select and set playback start; drag the selected clip to empty space (beat snap, SHIFT for the Clip grid). Hold a clip or SHIFT+tap for Copy/Cut/Paste, Duplicate, Move to playhead, Activate/Deactivate, Loop, Rename, Colour, Undo/Redo and Delete. Hold empty lane space to Paste here |
 | Q-Links | Four current mixer/device parameters; Q-LINK cycles the assigned group |
-| Parameter automation | Hold a parameter, volume, pan or send, then Show automation. For device Q-Links: touch the knob and press MENU. Select a Session clip first; draw on the automation screen |
+| Parameter automation | Hold a parameter, volume, pan or send, then Show automation. For device Q-Links: touch the knob and press MENU. Session uses clip envelopes; Arrangement opens a native Live editor preview with Draw/Edit, Undo/Redo and zoom (verification pending) |
 | Arrangement recording | Pads play notes; entering Arrangement or starting Play/Record restores timeline playback and disables Session recording |
 | Arrangement + TRACK | Upper-left button opens MIDI, audio and return track creation |
 | Arrangement multi-select | Drag from empty lane space or an unselected clip to draw a selection box. Lift for Copy selection / Duplicate after. Hold empty space to Paste here; the top selected track anchors the pasted group. Drag the ruler to scroll |
@@ -109,7 +109,7 @@ use the Windows pointer/keyboard and can bring Live to the foreground; keep thos
 
 Multi-clip copy/paste and Duplicate After support up to 128 clips, preserving track offsets and timing gaps.
 All destinations are checked before any copies are made. Group edits have one Undo step.
-Arrangement automation lanes cannot be read/written through Live's Remote Script API. The new drawing shortcut edits Session clip envelopes; Arrangement automation can still be recorded with Automation Arm and Q-Link movements. Return/master envelope drawing is unavailable. Only parameters exposed to the controller can be selected.
+Arrangement automation lanes cannot be read/written through Live's Remote Script API. An experimental Windows accessibility/native-window fallback is implemented for Arrangement, tempo, return and Main mixer automation; end-to-end verification is pending. It needs Live in the foreground with English accessibility labels, and matching controls exposed by Live. Missing/ambiguous controls or unavailable captures disable touches and display an error. Draw mode paints; Edit mode manipulates native points. Native view uses the Windows pointer like the existing plug-in mirror. Only parameters exposed to the controller can be selected.
 Arrangement resizing, splitting, time-range editing, and overlapping moves are not implemented.
 Moves and pastes require empty space, including no overlap with the source clip. Cut is deferred until
 paste succeeds. The arrangement clipboard references the copied clip and resets on add-on reload;
@@ -132,6 +132,7 @@ regularly through Live. No zero-risk hardware compatibility claim is made.
 .\.venv\Scripts\python.exe tools/check_addon_actions.py
 .\.venv\Scripts\python.exe tools/check_arrangement_ui.py
 .\.venv\Scripts\python.exe tools/check_automation.py
+.\.venv\Scripts\python.exe tools/check_native_automation.py
 ```
 
 These checks use simulated state, never open the MPC, and never edit the user's Live set.

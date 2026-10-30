@@ -16,3 +16,4 @@ jobs:
       - run: python tools/check_addon_actions.py
       - run: python tools/check_arrangement_ui.py
       - run: python tools/check_automation.py
+      - run: python tools/check_native_automation.py

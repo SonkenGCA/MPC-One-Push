@@ -1178,6 +1178,45 @@ class BrowserHandler(AbletonOSCHandler):
             self.osc_server.send('/live/automation', (str(token),json.dumps(result)))
         self.osc_server.add_handler('/live/automation', parameter_automation)
 
+        def native_automation(params):
+            import json
+            token,payload=params
+            try:
+                target=json.loads(payload)
+                if target['kind']=='tempo':
+                    tr,prm=self.song.master_track,None
+                    if tr.name!=target['track_name']:raise ValueError('Main track changed; select tempo again')
+                else:tr,prm=automation.parameter(self.song,target)
+                if self.song.record_mode or tr.is_frozen:
+                    raise ValueError('Stop recording / unfreeze the track before editing automation')
+                self.song.view.selected_track=tr
+                if target['kind']=='device':
+                    self.song.view.select_device(prm.canonical_parent)
+                view=Live.Application.get_application().view
+                view.show_view('Arranger')
+                if target['kind']=='device':view.show_view('Detail/DeviceChain')
+                view.focus_view('Arranger')
+                result=dict(target,param_name=prm.name if prm else 'Tempo',draw_mode=bool(self.song.view.draw_mode))
+            except Exception as e:
+                result=dict(error=str(e))
+            self.osc_server.send('/live/automation/native',(str(token),json.dumps(result)))
+        self.osc_server.add_handler('/live/automation/native',native_automation)
+
+        def automation_draw_mode(params):
+            if params:self.song.view.draw_mode=bool(int(params[0]))
+            self.osc_server.send('/live/automation/draw_mode',(int(self.song.view.draw_mode),))
+        self.osc_server.add_handler('/live/automation/draw_mode',automation_draw_mode)
+
+        def automation_context(params):
+            view=Live.Application.get_application().view
+            self.osc_server.send('/live/automation/context',(int(view.is_view_visible('Arranger')),int(self.song.view.draw_mode)))
+        self.osc_server.add_handler('/live/automation/context',automation_context)
+
+        def automation_view(params):
+            if params[0] not in ('arrange','session'):raise ValueError('Unknown main view')
+            Live.Application.get_application().view.show_view('Arranger' if params[0]=='arrange' else 'Session')
+        self.osc_server.add_handler('/live/automation/view',automation_view)
+
         def arrangement_edit(params):
             from .arrangement import edit
             t, start, length, name, op, dest = params
