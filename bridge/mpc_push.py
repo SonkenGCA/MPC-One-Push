@@ -394,6 +394,7 @@ class App:
         with self.lock:
             self.live.mode = self.ui.page
             self.live.view_tracks = (self.ui.bank, self.ui.bank + COLS)
+            self.live.arr_view = (self.ui.arr_start, self.ui.arr_start+self.ui.arr_len)
             self.live.mix_view, self.live.mix_returns = self.ui.mix_view, self.ui.mix_returns
             self.live.copy_recordings = self.ui.rec_to_arr
             if not getattr(self, "_page_ready", False) and self.live.connected and self.live.num_tracks > 0:
@@ -1017,6 +1018,10 @@ class App:
                 start = True
         self.touch = {"action": action, "x": x, "y": y, "moved": False, "start": start, "last": None,
                       "t": time.time()}
+        if action and action[0] == 'arr_clip':
+            self.touch['arr_can_move'] = self.ui.arr_selected == action[1:]
+            self.touch['arr_origin'] = self.ui.arr_start
+            self.ui.arr_follow = False
         if action and action[:2] == ("drag", "env"):
             self.env_draw_at(x, y)
         elif action and action[:2] == ("drag", "dialog"):     # press on Live's real dialog
@@ -1060,6 +1065,16 @@ class App:
         if abs(dx) + abs(dy) > 12:
             tc["moved"] = True
         action, v0 = tc["action"], tc["start"]
+        if tc.get('long'):
+            return
+        if action and action[0] == 'arr_clip' and tc['moved']:
+            if tc.get('arr_can_move'):
+                snap = self.ui.grid if self.ui.shift else 1.0
+                at = max(0., round((action[2]+dx/self.ui.arr_ppb())/snap)*snap)
+                self.ui.arr_preview = (action[1:], 'move', at)
+            else:
+                self.ui.arr_start = max(0., tc['arr_origin']-dx/self.ui.arr_ppb())
+            return
         if action and action[:2] == ("drag", "env"):    # drawing follows the finger from the first pixel
             self.env_draw_at(x, y)
             return
@@ -1192,6 +1207,17 @@ class App:
         if not tc:
             return
         action = tc["action"]
+        if action and action[0] == 'arr_clip':
+            preview, self.ui.arr_preview = self.ui.arr_preview, None
+            if tc.get('long'):
+                return
+            if tc['moved']:
+                if preview and preview[2] != action[2]:
+                    self.live.send('/live/arrangement/edit', *preview[0], preview[1], preview[2])
+                    self.ui.arr_selected = None
+            else:
+                self.tap(action)
+            return
         if tc.get("long"):                               # the action sheet already opened
             return
         if action and action[:2] == ("drag", "plugin"):  # release on the plug-in window, pointer goes back
@@ -1251,6 +1277,7 @@ class App:
             self.roll_tap(x, y)
         elif kind == "arr":                               # tap the timeline = jump there (and pick the lane's track)
             ui, live = self.ui, self.live
+            ui.arr_selected = None
             beat = ui.arr_start + (x - TL_X) / ui.arr_ppb()
             snap = 1.0 if ui.arr_ppb() >= 12 else live.beats_per_bar()
             live.set_song_time(round(beat / snap) * snap)
@@ -1275,17 +1302,12 @@ class App:
         if kind == "page":
             self.set_page(action[1])
         elif kind == "arr_clip":
-            _, t, start, length, name = action
-            bar = live.beats_per_bar()
-            at = (live.song_time // bar) * bar
-            args = (t, start, length, name)
-            ui.sheet = {"title": name or "Arrangement clip", "items": [
-                ("Duplicate after", ("arr_edit", *args, "duplicate", start+length)),
-                ("Copy to playhead", ("arr_edit", *args, "duplicate", at)),
-                ("Move earlier", ("arr_edit", *args, "move", start-length)),
-                ("Move later", ("arr_edit", *args, "move", start+length)),
-                ("Move to playhead", ("arr_edit", *args, "move", at)),
-                ("Delete clip", ("arr_edit", *args, "delete", 0))]}
+            ui.arr_selected = action[1:]
+            live.select_track(action[1])
+            if ui.shift:
+                self.arrangement_sheet(action[1:])
+            else:
+                live.set_song_time(action[2])
         elif kind == "pads_mode":
             self.toggle_pads()
         elif kind == "play":
@@ -1452,7 +1474,10 @@ class App:
             what = ui.colors["what"] if ui.colors else None
             ui.colors = None
             if what:
-                live.set_color(what, action[1])
+                if what[0] == 'arr_clip':
+                    live.send('/live/arrangement/set', *what[1:], 'color_index', action[1])
+                else:
+                    live.set_color(what, action[1])
         elif kind == "add_track":
             ui.sheet = {"title": "New track", "items": [("MIDI track", ("new_track", "midi", -1)),
                                                         ("Audio track", ("new_track", "audio", -1)),
@@ -1967,6 +1992,20 @@ class App:
             if not tc or tc["moved"] or tc.get("long") or time.time() - tc["t"] < LONG_PRESS_S:
                 return
             a = tc["action"]
+            if a and a[0] == 'arr_clip' and not self.ui.sheet:
+                tc['long'] = True
+                self.ui.arr_selected = a[1:]
+                self.arrangement_sheet(a[1:])
+                self.dirty.set()
+                return
+            if a and a[:2] == ('drag', 'arr') and a[2] >= 0 and not self.ui.sheet:
+                tc['long'] = True
+                at = max(0., round(self.ui.arr_start+(tc['x']-TL_X)/self.ui.arr_ppb()))
+                self.ui.sheet = {'title': 'Bar %.2f  ·  %s' % (at/self.live.beats_per_bar()+1, self.live.track_name(a[2])),
+                                 'items': [('Paste here', ('arr_clipboard','paste',a[2],at)),
+                                           ('Undo', ('arr_history','undo')), ('Redo', ('arr_history','redo'))]}
+                self.dirty.set()
+                return
             if not (a and a[0] in ("clip", "track", "scene") and not isinstance(a[1], str)):
                 return
             if self.ui.sheet or self.ui.kb or self.ui.colors or self.ui.help:
@@ -1974,6 +2013,24 @@ class App:
             tc["long"] = True
             self.open_sheet(a)
         self.dirty.set()
+
+    def arrangement_sheet(self, args):
+        t, start, length, name = args
+        live, ui = self.live, self.ui
+        data = live.tracks[t].arr_details.get((round(start,4),round(length,4),name), {})
+        ui.sheet = {'title': name or 'Arrangement clip', 'color': rgb(live.tracks[t].color),
+                    'items': [
+                        ('Copy', ('arr_clipboard','copy',*args)),
+                        ('Cut', ('arr_clipboard','cut',*args)),
+                        ('Paste at playhead', ('arr_clipboard','paste',t,live.song_time)),
+                        ('Duplicate after', ('arr_edit',*args,'duplicate',start+length)),
+                        ('Move to playhead', ('arr_edit',*args,'move',live.song_time)),
+                        ('Activate' if data.get('muted') else 'Deactivate', ('arr_edit',*args,'mute',0.)),
+                        ('Loop this clip', ('arr_loop',start,length)),
+                        ('Rename', ('rename', ('arr_clip',*args))),
+                        ('Colour', ('color', ('arr_clip',*args))),
+                        ('Undo', ('arr_history','undo')), ('Redo', ('arr_history','redo')),
+                        ('Delete clip', ('arr_edit',*args,'delete',0.))]}
 
     def modified_tap(self, action):
         """ERASE / COPY held, or a clip waiting to be pasted. Returns True if the tap was used up here."""
@@ -2112,6 +2169,18 @@ class App:
         ui, live = self.ui, self.live
         ui.sheet = None
         k = cmd[0]
+        if k == 'arr_clipboard':
+            live.send('/live/arrangement/clipboard', *cmd[1:])
+            return
+        if k == 'arr_history':
+            live.song(cmd[1])
+            ui.arr_selected = None
+            return
+        if k == 'arr_loop':
+            live.set_song('loop_start', float(cmd[1]))
+            live.set_song('loop_length', float(cmd[2]))
+            live.set_song('loop', 1)
+            return
         if k == "count_in":
             if live.count_in is not None:
                 live.count_in = (live.count_in+1)%4
@@ -2177,7 +2246,7 @@ class App:
         if k == "rename":
             what = cmd[1]
             ui.kb = {"what": what, "text": self.name_of(what), "caps": False, "title": "Rename " + {
-                "track": "track", "clip": "clip", "scene": "scene"}[what[0]]}
+                "track": "track", "clip": "clip", "scene": "scene", 'arr_clip': 'clip'}[what[0]]}
         elif k == "color":
             ui.colors = {"what": cmd[1], "title": "Colour: " + (self.name_of(cmd[1]) or cmd[1][0])}
         elif k == "dup_track":
@@ -2272,6 +2341,8 @@ class App:
 
     def name_of(self, what):
         live = self.live
+        if what[0] == 'arr_clip':
+            return what[-1]
         if what[0] == "track" and what[1] < len(live.tracks):
             return live.tracks[what[1]].name
         if what[0] == "clip" and what[1] < len(live.tracks):
@@ -2303,6 +2374,10 @@ class App:
             if kb["what"][0] == "search":
                 if name:
                     self.run_search(name)
+                return
+            if kb['what'][0] == 'arr_clip':
+                live.send('/live/arrangement/set', *kb['what'][1:], 'name', name)
+                ui.arr_selected = None
                 return
             live.rename(kb["what"], name)
             what = kb["what"]                       # show the new name right away

@@ -12,11 +12,14 @@ render() returns the frame plus the touch targets it drew, as (x0, y0, x1, y1, a
 import math
 import time
 import threading
+from concurrent.futures import ThreadPoolExecutor
 
 from PIL import Image, ImageDraw, ImageFont
 
 import device_views as dv
 import waveform
+
+_wave_workers = ThreadPoolExecutor(max_workers=2, thread_name_prefix='waveform')
 
 W, H = 1280, 800
 HEAD_H = 52
@@ -174,6 +177,8 @@ class UiState:
         self.preview_on = True      # browse: play the highlighted sample as the wheel moves
         self.preview_loop = False   # ... once, or looping
         self.arr_start = 0.0        # arrangement: first beat in view
+        self.arr_selected = None   # (track, start, length, name)
+        self.arr_preview = None    # (selection, operation, destination)
         self.arr_len = 64.0         # beats in view (zoom)
         self.arr_follow = True      # scroll along with the playhead
         self.clip_mode = "notes"    # clip page: "notes" (piano roll) or "auto" (automation lane)
@@ -550,24 +555,35 @@ class Renderer:
                    fill=TEXT, anchor="lm")
             d.line([TL_X, y0 + ARR_LANE_H - 1, RAIL_X - 1, y0 + ARR_LANE_H - 1], fill=(26, 26, 26))
             for start, length, name in tr.arrangement_clips():
+                data = tr.arr_details.get((round(start, 4), round(length, 4), name))
+                clip_col = rgb(data['color']) if data and 'color' in data else col
                 x0, x1 = x_of(start), x_of(start + length)
                 if x1 < TL_X or x0 >= RAIL_X:
                     continue
                 x0, x1 = max(TL_X, x0), min(RAIL_X - 1, x1)
                 if not math.isfinite(x0) or not math.isfinite(x1) or x1 - x0 < 1:
                     continue  # clipped/subpixel clips have no drawable rectangle at this zoom
-                d.rectangle([x0, y0 + 4, x1 - 1, y0 + ARR_LANE_H - 5], fill=scale(col, 0.5))
-                d.rectangle([x0, y0 + 4, x1 - 1, y0 + 9], fill=col)
+                d.rectangle([x0, y0 + 4, x1 - 1, y0 + ARR_LANE_H - 5], fill=scale(clip_col, 0.2 if data and data.get('muted') else 0.45))
+                d.rectangle([x0, y0 + 4, x1 - 1, y0 + 9], fill=clip_col)
+                self._arr_content(d, data, start, x0, x1, y0, x_of, ppb)
                 if x1 - x0 > 30:
-                    d.text((x0 + 6, y0 + ARR_LANE_H // 2 + 4), fit(d, name, font(16), x1 - x0 - 10), font=font(16),
+                    d.text((x0 + 6, y0 + 20), fit(d, name, font(14), x1 - x0 - 10), font=font(14),
                            fill=TEXT, anchor="lm")
+                if ui.arr_selected == (t, start, length, name):
+                    d.rectangle([x0, y0+4, x1-1, y0+ARR_LANE_H-5], outline=TEXT, width=2)
             self.target(0, y0, TL_X, y0 + ARR_LANE_H, ("track", t))
             self.target(TL_X, y0, RAIL_X, y0 + ARR_LANE_H, ("drag", "arr", t))
-            if ui.shift:
-                for start, length, name in tr.arrangement_clips():
-                    x0, x1 = max(TL_X, x_of(start)), min(RAIL_X-1, x_of(start+length))
-                    if math.isfinite(x0) and math.isfinite(x1) and x1-x0 >= 8:
-                        self.target(x0, y0+4, x1, y0+ARR_LANE_H-5, ("arr_clip", t, start, length, name))
+            for start, length, name in tr.arrangement_clips():
+                x0, x1 = max(TL_X, x_of(start)), min(RAIL_X-1, x_of(start+length))
+                if math.isfinite(x0) and math.isfinite(x1) and x1-x0 >= 8:
+                    self.target(x0, y0+4, x1, y0+ARR_LANE_H-5, ("arr_clip", t, start, length, name))
+            if ui.arr_preview and ui.arr_preview[0][0] == t:
+                selection, op, dest = ui.arr_preview
+                a, b = (dest, dest+selection[2]) if op == 'move' else (selection[1], selection[1]+dest)
+                left, right = max(TL_X, x_of(a)), min(RAIL_X-1, x_of(b))
+                if right-left > 2:
+                    d.rectangle((left,y0+2,right,y0+ARR_LANE_H-3), outline=ACCENT, width=3)
+                    d.text((left+8,y0+20), 'Bar %.2f' % (a/bpb+1), font=font(14), fill=ACCENT)
         # playhead
         x = x_of(live.song_time)
         if TL_X <= x < RAIL_X:
@@ -579,6 +595,62 @@ class Renderer:
             d.rounded_rectangle([RAIL_X + 4, y + 4, W - 4, y + MAIN_H // 2 - 5], 6, fill=PANEL)
             d.text((RAIL_X + 40, y + MAIN_H // 4), glyph, font=font(40), fill=TEXT, anchor="mm")
             self.target(RAIL_X, y, W, y + MAIN_H // 2, ("arr", "scroll_back" if step_dir < 0 else "scroll_fwd"))
+
+    def _arr_content(self, d, data, start, x0, x1, y0, x_of, ppb):
+        if not data or x1-x0 < 5:
+            return
+        top, bottom = y0+31, y0+ARR_LANE_H-10
+        ink = DIM if data.get('muted') else TEXT
+        if data.get('error'):
+            return
+        if data.get('midi'):
+            notes = data.get('notes', [])
+            if not notes:
+                return
+            lo, hi = min(n[0] for n in notes), max(n[0] for n in notes)
+            span = max(12, hi-lo+3)
+            offset, ls, le = data['offset'], data['loop_start'], data['loop_end']
+            visible_a, visible_b = (x0-x_of(start))/ppb, (x1-x_of(start))/ppb
+            # Initial pass, then only the loop iterations intersecting this viewport.
+            passes = [(0., False)]
+            if data['looping'] and le > ls:
+                n0 = max(1, int((visible_a+offset-le)//(le-ls))+1)
+                n1 = max(n0, int((visible_b+offset-ls)//(le-ls))+1)
+                passes += [(k*(le-ls), True) for k in range(n0, min(n1+1, n0+256))]
+            for shift, loop in passes:
+                for pitch, beat, duration, velocity, muted in notes:
+                    if loop and not ls <= beat < le:
+                        continue
+                    if not loop and data['looping'] and beat >= le:
+                        continue
+                    a = beat+shift-offset
+                    end = min(beat+duration, le) if data['looping'] else beat+duration
+                    b = end+shift-offset
+                    left, right = max(x0+2, x_of(start+a)), min(x1-2, x_of(start+b))
+                    if b <= visible_a or a >= visible_b or right < left:
+                        continue
+                    y = bottom-(pitch-lo+1)*(bottom-top)/span
+                    d.line((left,y,max(left,right),y), fill=scale(ink,.35 if muted else .85), width=2)
+        elif data.get('file') and data.get('sample_positions') and data.get('frames', 0) > 0:
+            peaks = self.wave_peaks(data['file'], 4096)
+            if not isinstance(peaks, list):
+                if x1-x0 > 100:
+                    d.text((x0+6,top),'Loading audio…' if peaks is None else 'Preview unavailable',font=font(12),fill=DIM)
+                return
+            positions, (a,b) = data['sample_positions'], data['range']
+            mid, half = (top+bottom)/2, (bottom-top)/2
+            for x in range(int(x0)+2, int(x1)-2, 2):
+                rel = (x-x_of(start))/ppb
+                if not a <= rel < b or b <= a:
+                    continue
+                f = (rel-a)/(b-a)*(len(positions)-1)
+                k = min(len(positions)-2, int(f))
+                s0, s1 = positions[k:k+2]
+                frame = s0 if s1 < s0 else s0+(s1-s0)*(f-k)
+                ix = int(frame/data['frames']*len(peaks))
+                if 0 <= ix < len(peaks):
+                    low, high = peaks[ix]
+                    d.line((x,mid-max(-1,min(1,high))*half,x,mid-max(-1,min(1,low))*half),fill=ink)
 
     # ------------------------------------------------------------ clip (piano roll + automation)
 
@@ -1187,6 +1259,12 @@ class Renderer:
         """Waveform peaks, computed once per file in a background thread (None while reading)."""
         key = (path, columns)
         if key not in self.wave_cache:
+            if len(self.wave_cache) >= 64:
+                # Never evict pending jobs: that would queue the same file again every frame.
+                old = next((k for k,v in self.wave_cache.items() if v is not None), None)
+                if old is None:
+                    return None
+                self.wave_cache.pop(old)
             self.wave_cache[key] = None
 
             def work():
@@ -1194,7 +1272,7 @@ class Renderer:
                     self.wave_cache[key] = waveform.peaks(path, columns)
                 except Exception as e:
                     self.wave_cache[key] = "error: %s" % e
-            threading.Thread(target=work, daemon=True).start()
+            _wave_workers.submit(work)
         return self.wave_cache[key]
 
     WAVE_H = 150

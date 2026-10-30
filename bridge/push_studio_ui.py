@@ -89,7 +89,7 @@ class Renderer(base.Renderer):
             amount = 1 - (1 - elapsed / .18) ** 3
             img.paste(ImageEnhance.Brightness(img.crop(area)).enhance(.78 + .22 * amount), area)
             self.animating = True
-        selected = (live.sel, ui.br_sel, live.dev.idx, live.dev.bank, overlay)
+        selected = (live.sel, ui.br_sel, live.dev.idx, live.dev.bank, overlay, ui.arr_selected)
         if selected != self._selection:
             self._selection_at = self._now if self._selection is not None else -100
             self._selection = selected
@@ -109,6 +109,8 @@ class Renderer(base.Renderer):
             strength = (1 - age / .28) ** 2
             # Highlight the real selected control; never interpolate its position.
             wanted = ('br_item', ui.br_sel) if ui.page == 'browse' else ('track', live.sel)
+            if ui.page == 'arrange' and ui.arr_selected:
+                wanted = ('arr_clip', *ui.arr_selected)
             for x0, y0, x1, y1, action in self.targets:
                 if action == wanted and not overlay:
                     d.rounded_rectangle((x0 + 3, y0 + 3, x1 - 4, y1 - 4), 4,
@@ -180,6 +182,9 @@ class Renderer(base.Renderer):
 
     def _sheet(self, d, ui):
         sh, items = ui.sheet, ui.sheet['items'][:40]
+        if sh is not getattr(self, '_last_sheet', None):
+            self._last_sheet, self._sheet_at = sh, self._now
+        age = self._now-self._sheet_at
         cols = self.SHEET_COLS if len(items) <= 12 else 4
         rows = (len(items)+cols-1)//cols
         bh = max(40, min(self.SHEET_BTN_H, (H-HEAD_H-16-120)//max(1, rows)-12))
@@ -199,8 +204,12 @@ class Renderer(base.Renderer):
             bx,by=x+24+c*(bw+12), y+84+row*(bh+12)
             danger=cmd[0].startswith('del_') or (cmd[0] == 'arr_edit' and cmd[-2] == 'delete')
             cc=RED if danger else TEXT
-            d.rounded_rectangle((bx,by,bx+bw,by+bh),4,fill=(25,27,28),outline=scale(RED,.35) if danger else LINE)
-            text(d,(bx+16,by+bh//2),label,18 if cols==3 else 16,cc,width=bw-38)
+            progress = min(1., max(0., (age-row*.025)/.18)) if self.motion else 1.
+            reveal = 1-(1-progress)**3
+            if progress < 1:
+                self.animating = True
+            d.rounded_rectangle((bx,by,bx+bw,by+bh),4,fill=scale((25,27,28),.65+.35*reveal),outline=scale(RED,.35) if danger else LINE)
+            text(d,(bx+16,by+bh//2),label,18 if cols==3 else 16,scale(cc,.35+.65*reveal),width=bw-38)
             self.target(bx,by,bx+bw,by+bh,('sheet',i))
 
     def _header(self, d, live, ui):

@@ -1161,6 +1161,11 @@ class BrowserHandler(AbletonOSCHandler):
         self.osc_server.add_handler("/live/song/get/recording_clips", recording_clips)
         self.osc_server.add_handler("/live/clip/to_arrangement", clip_to_arrangement)
 
+        # Also refresh the companion module when /live/api/reload reloads this handler.
+        from importlib import reload
+        from . import arrangement
+        reload(arrangement)
+
         def arrangement_edit(params):
             from .arrangement import edit
             t, start, length, name, op, dest = params
@@ -1171,6 +1176,90 @@ class BrowserHandler(AbletonOSCHandler):
                 result = "error: %s" % e
             self.osc_server.send("/live/arrangement/edit", (int(t), result))
         self.osc_server.add_handler("/live/arrangement/edit", arrangement_edit)
+
+        def arrangement_get(params):
+            import json
+            from .arrangement import detail
+            t, left, right = int(params[0]), float(params[1]), float(params[2])
+            import math
+            if not 0 <= t < len(self.song.tracks) or not all(math.isfinite(v) for v in (left,right)) or right <= left:
+                return
+            visible = [c for c in self.song.tracks[t].arrangement_clips
+                       if c.start_time < right and c.start_time+c.length > left]
+            for c in visible[:32]:
+                try:
+                    data = detail(c, left, right)
+                    self.osc_server.send('/live/arrangement/detail', (t, json.dumps(data, separators=(',', ':'))))
+                except Exception as e:
+                    self.osc_server.send('/live/arrangement/detail', (t, json.dumps(dict(
+                        start=c.start_time, length=c.length, name=c.name, error=str(e)))))
+        self.osc_server.add_handler('/live/arrangement/get', arrangement_get)
+
+        clipboard = [None]
+        def arrangement_clipboard(params):
+            from .arrangement import find_clip, empty_destination
+            op = str(params[0])
+            t = int(params[1])
+            try:
+                if not 0 <= t < len(self.song.tracks):
+                    raise ValueError('Track no longer exists')
+                if op in ('copy', 'cut'):
+                    tr, c = find_clip(self.song, t, float(params[2]), float(params[3]), str(params[4]))
+                    clipboard[0] = (tr, c, op, (c.start_time, c.length, c.name))
+                    result = 'Clip copied' if op == 'copy' else 'Cut ready; source moves when pasted'
+                elif op == 'paste':
+                    if clipboard[0] is None:
+                        raise ValueError('Copy a clip first')
+                    tr, c, mode, fingerprint = clipboard[0]
+                    if tr not in self.song.tracks or c not in tr.arrangement_clips:
+                        raise ValueError('Source clip no longer exists; copy again')
+                    if (c.start_time, c.length, c.name) != fingerprint:
+                        raise ValueError('Source clip changed; copy again')
+                    dst = self.song.tracks[t]
+                    if bool(dst.has_midi_input) != bool(c.is_midi_clip):
+                        raise ValueError('Choose the same type of track (MIDI or audio)')
+                    if tr.is_frozen:
+                        raise ValueError('Unfreeze the source track first')
+                    at = float(params[2])
+                    empty_destination(self.song, dst, at, c.length)
+                    self.song.begin_undo_step()
+                    try:
+                        dst.duplicate_clip_to_arrangement(c, at)
+                        if mode == 'cut':
+                            tr.delete_clip(c)
+                            clipboard[0] = None
+                    finally:
+                        self.song.end_undo_step()
+                    result = 'Pasted clip'
+                else:
+                    raise ValueError('Unknown clipboard action')
+            except Exception as e:
+                result = 'error: %s' % e
+            self.osc_server.send('/live/arrangement/edit', (t, result))
+        self.osc_server.add_handler('/live/arrangement/clipboard', arrangement_clipboard)
+
+        def arrangement_property(params):
+            from .arrangement import find_clip
+            t, start, length, name, field, value = params
+            try:
+                tr, c = find_clip(self.song, int(t), float(start), float(length), str(name))
+                if self.song.record_mode or tr.is_frozen:
+                    raise ValueError('Stop recording / unfreeze the track before editing')
+                if field not in ('name', 'color_index'):
+                    raise ValueError('Unsupported property')
+                value = str(value)[:80] if field == 'name' else int(value)
+                if field == 'color_index' and not 0 <= value < 70:
+                    raise ValueError('Invalid colour')
+                self.song.begin_undo_step()
+                try:
+                    setattr(c, field, value)
+                finally:
+                    self.song.end_undo_step()
+                result = 'ok'
+            except Exception as e:
+                result = 'error: %s' % e
+            self.osc_server.send('/live/arrangement/edit', (int(t), result))
+        self.osc_server.add_handler('/live/arrangement/set', arrangement_property)
 
         def dev_presets(params: Tuple[Any]):
             """/live/dev/get/presets (track, device path): a plug-in's own presets / programs.

@@ -10,6 +10,7 @@ Talks to Ableton only through AbletonOSC; never touches Live's files or preferen
 """
 
 import math
+import json
 import os
 import socket
 import threading
@@ -47,6 +48,7 @@ class Track:
         self.sends, self.send_strs = [], []     # send levels 0..1 (one per return track) and Live's text for them
         self.route = None        # (input type, input channel, output type, output channel, monitoring 0/1/2/-1)
         self.arr = {"name": [], "start_time": [], "length": []}     # arrangement clips, parallel lists
+        self.arr_details = {}
 
     def arrangement_clips(self):
         a = self.arr
@@ -147,6 +149,7 @@ class Live:
             self.rx.settimeout(0.5)
         self.mode = "session"            # which page the app shows; decides what gets polled
         self.view_tracks = (0, 8)        # tracks on screen, for meters and volumes
+        self.arr_view = (0., 64.)
         self.returns, self.master = [], Strip("Main")     # Mix page: return tracks and the master
         self.main_controls = None
         self.clip_details, self.want_details = {}, False   # Clip page DETAILS (want_details set by the app)
@@ -316,9 +319,18 @@ class Live:
                         self.send("/live/song/get/" + prop)
                 if tick % 40 == 0:                        # 2 s: clips on the tracks in view
                     a, b = self.view_tracks
+                    for index, track in enumerate(self.tracks):
+                        if not a <= index < b:
+                            track.arr_details.clear()
                     for t in range(a, min(b, self.num_tracks)):
                         for prop in ("name", "start_time", "length"):
                             self.send("/live/track/get/arrangement_clips/" + prop, t)
+                # Spread thumbnail work over the cycle instead of asking Live for eight lanes at once.
+                if tick % 5 == 0:
+                    a, b = self.view_tracks
+                    count = min(b, self.num_tracks)-a
+                    if count > 0:
+                        self.send('/live/arrangement/get', a+(tick//5)%count, *self.arr_view)
             if tick % 20 == 0:
                 self.send("/live/song/get/session_automation_record")
                 self.send("/live/mixer/get/main_controls")
@@ -670,6 +682,17 @@ class Live:
         if isinstance(t, int) and 0 <= t < len(self.tracks):
             self.tracks[t].arr[key] = list(v[1:])
 
+    def _on_live_arrangement_detail(self, v):
+        if len(v) != 2 or not 0 <= v[0] < len(self.tracks):
+            return
+        data = json.loads(v[1])
+        tr = self.tracks[v[0]]
+        key = (round(data['start'], 4), round(data['length'], 4), data['name'])
+        # Only cache visible thumbnails; old zoom/track data cannot grow without bound.
+        if len(tr.arr_details) >= 64 and key not in tr.arr_details:
+            tr.arr_details.pop(next(iter(tr.arr_details)))
+        tr.arr_details[key] = data
+
     def _on_live_track_get_arrangement_clips_name(self, v):
         self._arr_reply("name", v)
 
@@ -765,9 +788,10 @@ class Live:
     def _on_live_arrangement_edit(self, v):
         t, result = int(v[0]), str(v[1])
         self.toast("Arrangement updated" if result == "ok" else result)
-        if result == "ok":
+        if not result.startswith('error:'):
             for prop in ("name", "start_time", "length"):
                 self.send("/live/track/get/arrangement_clips/" + prop, t)
+            self.send('/live/arrangement/get', t, *self.arr_view)
 
     def _on_live_clip_to_arrangement(self, v):
         if len(v) >= 4 and v[2] == "ok":

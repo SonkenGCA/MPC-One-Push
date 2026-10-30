@@ -1,12 +1,25 @@
 # Changelog
 
-## 0.2.1 ó Arrangement recording start fix
+## 0.3.0 - Arrangement thumbnails and touch editing
 
-Arrangement dial/timeline seeking now sets Liveís playback start marker as well as its current
+Arrangement clips now show MIDI notes and local WAV/AIFF waveforms with Live's audio timing map.
+Tap to select, then drag to an empty destination; hold a clip for an animated action sheet.
+Copy, deferred Cut, Paste, Duplicate, Move, Activate/Deactivate, Loop, Rename, Colour, Undo/Redo
+and Delete are available. Hold empty lane space to paste at that position. Edits reject stale
+selections, frozen tracks, recording and occupied destinations. Background waveform reads use
+a bounded worker pool. The sheet has staggered entry fades and clip selection feedback.
+
+Verified MIDI thumbnail data, warped/unwarped audio maps and clip operations on temporary Live
+tracks, removed afterward. Added seven offline gesture/data/clipboard checks (38 total).
+Resizing/splitting and moves that overlap the source are not implemented. No MPC firmware changes.
+
+## 0.2.1 ‚Äî Arrangement recording start fix
+
+Arrangement dial/timeline seeking now sets Live‚Äôs playback start marker as well as its current
 playhead position. PLAY START resets both to zero. This fixes Play/Record returning to an older
 mouse-selected start position. Verified both positions against Live while stopped, then restored them.
 
-## 0.2.0 ó Playing, mixer, racks and arrangement editing
+## 0.2.0 ‚Äî Playing, mixer, racks and arrangement editing
 
 Added native Live count-in and device duplication/reordering.
 Added cue/crossfader controls and rack macro variation store/recall/randomization.
@@ -18,18 +31,18 @@ recording are rejected; edits are grouped for Undo. These additions have offline
 physical pad testing remains pending. Arrangement and device editing passed a real Live smoke test
 on a temporary track that was deleted afterward.
 
-## 0.1.2 ó Setup and shutdown
+## 0.1.2 ‚Äî Setup and shutdown
 
 The single launcher now creates its Python environment and installs Pillow when needed.
 Startup/USB failure and normal exit now clean up held notes, preview, pointer state, MIDI and OSC resources.
 Added regression checks for startup and shutdown failures and releasing OSC resources.
 
-## 0.1.1 ó One launcher
+## 0.1.1 ‚Äî One launcher
 
 Simplified the public package to start-push.bat for the current Studio UI. Removed alternate launchers
 and classic-interface instructions. Added a setup hint when the Python environment is missing.
 
-## 0.1.0 ‚Äî Public preview
+## 0.1.0 √¢‚Ç¨‚Äù Public preview
 
 Initial public snapshot of the working Windows/MPC One controller: touchscreen Studio UI,
 session/arrangement/clip/mixer/device/browser workflows and controller-mode USB integration.
