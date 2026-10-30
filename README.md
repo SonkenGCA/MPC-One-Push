@@ -32,6 +32,15 @@ Install the official Akai MPC desktop software/driver first, and verify controll
 Keep the tested firmware when evaluating this project. The app streams display/control messages through
 the installed drivers; it does not flash firmware or write to MPC storage.
 
+## Other MPC models
+
+If it doesn’t work with your specific MPC, a coding agent such as GPT/Codex or Claude may be able to
+help adapt it. Give the agent this repository, your MPC model and firmware version, and a description
+of what happens. Different models may need changes to USB identifiers, screen dimensions, button/pad
+mappings or the controller protocol. Ask it to inspect and test those differences before connecting;
+keep changes on the computer side, with no firmware flashing or writes to MPC storage. Compatibility
+with other models is not guaranteed. Share successful adaptations through an issue or pull request.
+
 ## Setup
 
 1. Clone/download this repository. In its directory, run:
