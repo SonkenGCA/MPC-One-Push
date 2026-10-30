@@ -1,14 +1,16 @@
 # Changelog
 
-## Unreleased — Playing, mixer, racks and arrangement editing
+## 0.2.0 — Playing, mixer, racks and arrangement editing
 
+Added native Live count-in and device duplication/reordering.
 Added cue/crossfader controls and rack macro variation store/recall/randomization.
 Added chord modes, soft/hard velocity response and pressure routing (poly/channel/mod wheel/off).
 Held chord voicings are captured so octave/mode changes cannot leave their notes stuck.
 Drum Rack and 16 Levels bypass chords. Added SHIFT+tap arrangement actions: duplicate, delete,
 move earlier/later or to the playhead. Occupied destinations, stale selections, frozen tracks and
 recording are rejected; edits are grouped for Undo. These additions have offline test coverage;
-real pad/Live-set validation is pending.
+physical pad testing remains pending. Arrangement and device editing passed a real Live smoke test
+on a temporary track that was deleted afterward.
 
 ## 0.1.2 — Setup and shutdown
 

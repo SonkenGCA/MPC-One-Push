@@ -84,6 +84,8 @@ The public package has one launcher: **start-push.bat**, which opens the current
 | TRACK MIX / PROGRAM EDIT / BROWSE | Mixer / Device / Browser |
 | Pads | Play notes; TRACK MUTE toggles clip launch mode; Clip page uses step sequencing |
 | Cue / Crossfader | MENU: adjust cue level and crossfader in 5% steps; center reset for the crossfader |
+| Device management | Select a device, then MENU > Move selected device: move left/right within its chain or duplicate (when Live supports duplication in that chain) |
+| Count-in | MENU: cycle Live’s native recording count-in through off / 1 / 2 / 4 bars |
 | Rack macros | Select a rack on Device, then MENU > Rack macro variations: randomize, store, recall previous/next |
 | Playing options | MENU: Chord (off/major/minor/sevenths/sus/octaves), Velocity (linear/soft/hard), Pressure (poly/channel/mod wheel/off). Chords bypass Drum Rack and 16 Levels |
 | Arrangement clips | SHIFT+tap a clip: duplicate after, copy/move to playhead, move earlier/later by its length, or delete. Destinations must be empty; UNDO reverses an edit |

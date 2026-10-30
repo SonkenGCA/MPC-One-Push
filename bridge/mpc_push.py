@@ -619,6 +619,7 @@ class App:
                 self.no_port_toast = time.time()
                 live.toast("Pads need a virtual MIDI port (loopMIDI) to reach Live: see README")
             self.pad_off(pad)
+            held_voices = {voice for other in self.sounding for voice in self.pad_voices(other)}
             self.sounding[pad] = note
             offsets = (0,) if live.drum_pads is not None or ui.levels else CHORDS[ui.chord_mode]
             self.voices[pad] = tuple(note + n for n in offsets if note + n <= 127)
@@ -627,7 +628,8 @@ class App:
             if not ui.pad_page <= note < ui.pad_page + 16:      # keep an open Drum Rack's pad page on it
                 ui.pad_page = max(0, min(112, 36 + (note - 36) // 16 * 16))
             for voice in self.pad_voices(pad):
-                self.midi.send(0x90, voice, vel)
+                if voice not in held_voices:
+                    self.midi.send(0x90, voice, vel)
             return
         if ui.page == "clip":                       # step sequencer: toggle a note on the orange row
             if not live.clip_exists():
@@ -1920,12 +1922,15 @@ class App:
         while not self.quit:
             ui, live = self.ui, self.live
             now = time.perf_counter()
+            released = set()
             for item in list(offs):                     # note-offs that are due
                 if now >= item[0]:
                     offs.remove(item)
                     if self.sounding.get(item[1]) == item[2]:
                         for voice in self.pad_voices(item[1]):
-                            self.midi.send(0x80, voice, 0)
+                            if voice not in released:
+                                self.midi.send(0x80, voice, 0)
+                                released.add(voice)
             active = (ui.repeat_held or ui.repeat_latch) and ui.pad_mode() == "play" and self.sounding
             if not active:
                 next_t = None
@@ -1942,10 +1947,13 @@ class App:
                     offs += [(now + period * GATE, p, n) for p, n in self.sounding.items()]
             if now >= next_t:
                 with self.lock:
+                    repeated = set()
                     for p, n in list(self.sounding.items()):
                         for voice in self.pad_voices(p):
-                            self.midi.send(0x80, voice, 0)
-                            self.midi.send(0x90, voice, self.repeat_vel.get(p, 100))
+                            if voice not in repeated:
+                                self.midi.send(0x80, voice, 0)
+                                self.midi.send(0x90, voice, self.repeat_vel.get(p, 100))
+                                repeated.add(voice)
                         offs.append((now + period * GATE, p, n))
                 next_t += period
                 if next_t < now:
@@ -2071,11 +2079,13 @@ class App:
             ("Save set", ("save",)), ("Save set as...", ("save_as",)), ("Open set...", ("open_list", 0)),
             ("New set", ("new_set",)), ("Export audio...", ("export",)), ("Capture MIDI", ("capture_midi",)),
             (fixed, ("fixed",)),
+            ("Count-in: " + ({0:"off",1:"1 bar",2:"2 bars",3:"4 bars"}.get(live.count_in, "waiting for Live")), ("count_in",)),
             ("Chord: " + ui.chord_mode, ("play_option", "chord_mode")),
             ("Velocity: " + ui.velocity_curve, ("play_option", "velocity_curve")),
             ("Pressure: " + ui.pressure_mode, ("play_option", "pressure_mode")),
             ("Cue / Crossfader", ("main_controls",)),
             ("Rack macro variations", ("rack_menu",)),
+            ("Move selected device", ("device_move_menu",)),
             ("Recordings to arrangement: %s" % ("on" if ui.rec_to_arr else "off"), ("rec_to_arr",)),
             ("Pads: %s" % ("in key" if ui.note_layout == "scale" else "chromatic"), ("layout",)),
             ("Key: %s" % NOTE_NAMES[self.live.scale[0] % 12], ("key_pick",)),
@@ -2102,6 +2112,30 @@ class App:
         ui, live = self.ui, self.live
         ui.sheet = None
         k = cmd[0]
+        if k == "count_in":
+            if live.count_in is not None:
+                live.count_in = (live.count_in+1)%4
+                live.send("/live/song/set/count_in_duration", live.count_in)
+            else:
+                live.send("/live/song/get/count_in_duration")
+            self.open_menu()
+            return
+        if k == "device_move_menu":
+            dev = live.dev
+            if dev.names:
+                args = (dev.track, dev.path(), dev.names[dev.idx])
+                ui.sheet = {"title": "Move " + dev.names[dev.idx], "items": [
+                    ("Move left", ("device_move", *args, -1)), ("Move right", ("device_move", *args, 1)),
+                    ("Duplicate", ("device_duplicate", *args))]}
+            else:
+                live.toast("Select a device on the Device page first")
+            return
+        if k == "device_move":
+            live.send("/live/dev/move", *cmd[1:])
+            return
+        if k == "device_duplicate":
+            live.send("/live/dev/duplicate", *cmd[1:])
+            return
         if k == "rack_menu":
             dev = live.dev
             if dev.names and dev.selected_info()[2]:

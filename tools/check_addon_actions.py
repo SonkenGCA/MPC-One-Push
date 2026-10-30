@@ -15,6 +15,37 @@ def callback(name, env):
     return env[name]
 
 class AddonActions(unittest.TestCase):
+    def test_count_in_validates_live_enum(self):
+        host = NS(song=NS(count_in_duration=0), osc_server=NS(send=Mock()))
+        fn = callback('count_in', {'self':host})
+        for value in (1,2,3,0):
+            fn((value,))
+            self.assertEqual(host.song.count_in_duration,value)
+        with self.assertRaises(ValueError): fn((4,))
+        self.assertEqual(host.song.count_in_duration,0)
+
+    def test_device_duplicate_checks_expected_device(self):
+        chain=NS(devices=[NS(name='Utility')], duplicate_device=Mock())
+        send=Mock()
+        fn=callback('dev_duplicate', {'_walk':lambda *a:chain, '_split':lambda p:('',0), '_send':send})
+        fn((0,'0','Wrong'))
+        chain.duplicate_device.assert_not_called()
+        fn((0,'0','Utility'))
+        chain.duplicate_device.assert_called_once_with(0)
+
+    def test_device_move_guards_chain_edges_and_stale_device(self):
+        device = NS(name='EQ')
+        chain = NS(devices=[device, NS(name='Reverb')])
+        host = NS(song=NS(move_device=Mock(return_value=1)))
+        send = Mock()
+        fn = callback('dev_move', {'self':host, '_walk':lambda *a:chain,
+                                   '_split':lambda p:('',0), '_send':send})
+        fn((0,'0','EQ',-1))
+        host.song.move_device.assert_not_called()
+        fn((0,'0','Stale',1))
+        host.song.move_device.assert_not_called()
+        fn((0,'0','EQ',1))
+        host.song.move_device.assert_called_once_with(device, chain, 1)
     def test_main_controls_clamp_and_return_actual_ranges(self):
         cue, cross = NS(value=.5, min=0., max=1.), NS(value=0., min=-1., max=1.)
         send = Mock()

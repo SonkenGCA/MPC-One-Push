@@ -20,6 +20,15 @@ class BrowserHandler(AbletonOSCHandler):
         self.class_identifier = "browser"
 
     def init_api(self):
+        def count_in(params):
+            if params:
+                value = int(params[0])
+                if value not in (0, 1, 2, 3):
+                    raise ValueError('Count-in must be off, 1, 2 or 4 bars')
+                self.song.count_in_duration = value
+            self.osc_server.send("/live/song/get/count_in_duration", (int(self.song.count_in_duration),))
+        self.osc_server.add_handler("/live/song/get/count_in_duration", count_in)
+        self.osc_server.add_handler("/live/song/set/count_in_duration", count_in)
         def browser():
             return Live.Application.get_application().browser
 
@@ -1413,6 +1422,40 @@ class BrowserHandler(AbletonOSCHandler):
                 result = "error: %s" % e
             _send("/live/dev/rack_action", [ti, dp, result])
         self.osc_server.add_handler("/live/dev/rack_action", rack_action)
+
+        def dev_move(params):
+            ti, dp, expected, step = int(params[0]), str(params[1]), str(params[2]), int(params[3])
+            cp, index = _split(dp)
+            try:
+                chain = _walk(ti, cp)
+                device = chain.devices[index]
+                destination = index+step
+                if step not in (-1, 1) or not 0 <= destination < len(chain.devices):
+                    raise ValueError('Already at the edge of this chain')
+                if device.name != expected:
+                    raise ValueError('Device changed; select it again')
+                position = self.song.move_device(device, chain, destination)
+                result = "ok"
+            except Exception as e:
+                result, position = "error: %s" % e, index
+            _send("/live/dev/move", [ti, cp, result, int(position)])
+        self.osc_server.add_handler("/live/dev/move", dev_move)
+
+        def dev_duplicate(params):
+            ti, dp, expected = int(params[0]), str(params[1]), str(params[2])
+            cp, index = _split(dp)
+            try:
+                chain = _walk(ti, cp)
+                if chain.devices[index].name != expected:
+                    raise ValueError('Device changed; select it again')
+                if not hasattr(chain, 'duplicate_device'):
+                    raise ValueError('Live cannot duplicate a device in this chain')
+                chain.duplicate_device(index)
+                result = "ok"
+            except Exception as e:
+                result = "error: %s" % e
+            _send("/live/dev/duplicate", [ti, cp, result])
+        self.osc_server.add_handler("/live/dev/duplicate", dev_duplicate)
 
         self.osc_server.add_handler("/live/chain/get/devices", chain_devices)
         self.osc_server.add_handler("/live/dev/get/params", dev_params)

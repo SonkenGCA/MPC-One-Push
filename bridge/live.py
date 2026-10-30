@@ -158,6 +158,7 @@ class Live:
         self.tracks, self.num_tracks, self.num_scenes, self.scenes = [], -1, -1, []
         self.playing = self.metro = self.rec = self.overdub = False
         self.tempo = 120.0
+        self.count_in = None
         self.sel = 0
         self.dev = Device()
         # Browser: br_path [] = every root, [PLACES] = the user's Places folders + Current Project,
@@ -321,6 +322,7 @@ class Live:
             if tick % 20 == 0:
                 self.send("/live/song/get/session_automation_record")
                 self.send("/live/mixer/get/main_controls")
+                self.send("/live/song/get/count_in_duration")
             if self.mode == "clip" and self.clip_exists():
                 t, s = self.clip
                 if tick % 2 == 0 and self.playing:
@@ -407,6 +409,10 @@ class Live:
 
     def _on_live_song_get_metronome(self, v):
         self.metro = bool(v[0])
+
+    def _on_live_song_get_count_in_duration(self, v):
+        if v and int(v[0]) in (0, 1, 2, 3):
+            self.count_in = int(v[0])
 
     def _on_live_song_get_session_record(self, v):
         self.rec = bool(v[0])
@@ -1082,6 +1088,22 @@ class Live:
         self.toast(str(v[2]))
         if str(v[2]).startswith("ok"):
             self._load_params()
+
+    def _on_live_dev_move(self, v):
+        if self.dev.track != int(v[0]) or self.dev.chain != str(v[1]):
+            return
+        if v[2] == "ok":
+            self.dev.idx = int(v[3])
+            self.dev.bank = 0
+            self.send("/live/chain/get/devices", self.dev.track, self.dev.chain)
+            self._load_params()
+        else:
+            self.toast(str(v[2]))
+
+    def _on_live_dev_duplicate(self, v):
+        self.toast("Device duplicated" if v[2] == "ok" else str(v[2]))
+        if self.dev.track == int(v[0]) and self.dev.chain == str(v[1]):
+            self.send("/live/chain/get/devices", self.dev.track, self.dev.chain)
 
     def request_bank_strings(self):
         d = self.dev
