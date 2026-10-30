@@ -181,6 +181,8 @@ class UiState:
         self.arr_preview = None    # (selection, operation, destination)
         self.arr_selection = []    # multi-clip selection, in track/time order
         self.arr_marquee = None    # screen-space selection rectangle during a drag
+        self.automation_arrangement = False
+        self.parameter_automation = False
         self.arr_len = 64.0         # beats in view (zoom)
         self.arr_follow = True      # scroll along with the playhead
         self.clip_mode = "notes"    # clip page: "notes" (piano roll) or "auto" (automation lane)
@@ -203,7 +205,7 @@ class UiState:
         self.pad_page = 36          # device page, opened Drum Rack: lowest note of the 16 pads shown
 
     def pad_mode(self):
-        return "step" if self.page == "clip" else "play" if self.page == "arrange" else self.pads
+        return "step" if self.page == "clip" and not self.parameter_automation else "play" if self.page in ('arrange','clip') else self.pads
 
     def play_label(self, live):
         """What the pads play, for the header chip: notes from C3, a scale, a drum pad's name, 16 Levels."""
@@ -671,6 +673,8 @@ class Renderer:
     # ------------------------------------------------------------ clip (piano roll + automation)
 
     def _page_clip(self, d, live, ui):
+        if live.automation_target:
+            return self._page_parameter_automation(d,live,ui)
         auto = ui.clip_mode == "auto"
         self._soft(d, 0, "NOTES", active=ui.clip_mode == "notes", action=("clip", "mode_notes"))
         self._soft(d, 1, "AUTOMATION", active=auto, action=("clip", "mode_auto"))
@@ -925,6 +929,45 @@ class Renderer:
                 keys.append(((dev.idx, p), dev.pnames[p] if p < len(dev.pnames) else "?"))
         for i, (key, label) in enumerate(keys[:5]):
             self._soft(d, i + 2, label, active=tuple(live.env_key) == key, action=("clip", "env_key", key))
+
+    def _page_parameter_automation(self,d,live,ui):
+        self._soft(d,0,'BACK',action=('automation_back',))
+        self._soft(d,1,'GRID '+str(ui.grid),action=('clip','grid'))
+        self._soft(d,5,'RE-ENABLE',action=('arr','reenable'))
+        self._soft(d,6,'CLEAR LANE',action=('automation_clear',))
+        self._soft(d,7,'REFRESH',action=('automation_refresh',))
+        target,data = live.automation_target,live.automation_data
+        label = data.get('label','Automation') if data else 'Loading automation…'
+        d.text((30,MAIN_Y+28),label,font=font(26),fill=TEXT,anchor='lm')
+        d.text((30,MAIN_Y+60),target.get('track_name','')+' · '+('Arrangement' if 'arr' in target else 'Session clip'),font=font(18),fill=DIM,anchor='lm')
+        if not data or data.get('error'):
+            msg = data.get('error') if data else 'Reading Live envelope…'
+            if data and data.get('error') and 'arr' in target:
+                lines=['Live does not expose Arrangement automation envelopes to this controller.',
+                       'You can record Q-Link movements with Automation Arm.',
+                       'To draw clip envelopes here, select a Session clip.']
+            else:
+                lines=[msg]
+            for row,line in enumerate(lines):
+                d.text((40,MAIN_Y+150+row*35),fit(d,line,font(20),W-100),font=font(20),fill=DIM)
+            return
+        top,bottom = MAIN_Y+110,LOW_Y-45
+        left,right = KEY_W,RAIL_X-1
+        for i in range(9):
+            y=top+(bottom-top)*i/8
+            d.line((left,y,right,y),fill=LINE)
+        vals=data['vals'];lo,hi=data['min'],data['max']
+        points=[(left+(right-left)*i/(len(vals)-1),bottom-(v-lo)/max(1e-9,hi-lo)*(bottom-top)) for i,v in enumerate(vals)]
+        if points:
+            d.line(points,fill=ACCENT,width=3)
+        if not data['exists']:
+            msg='Draw to create automation' if 'arr' not in target else 'Record automation in Live first, then draw to edit this lane'
+            d.text((left,top-20),msg,font=font(17),fill=DIM)
+        for i in range(9):
+            x=left+(right-left)*i/8
+            beat=data['a']+(data['b']-data['a'])*i/8
+            d.text((x,bottom+18),'%.2f'%beat,font=font(14),fill=DIM,anchor='mm')
+        self.target(left,top,right,bottom,('drag','parameter_env',0))
 
     def _clip_auto_lane(self, d, live, ui, x_of, gy0, gy1, col):
         e = live.env

@@ -162,6 +162,23 @@ class ArrangementTouch(unittest.TestCase):
 
 
 class ArrangementData(unittest.TestCase):
+    def test_atomic_snapshot_ignores_mixed_legacy_property_replies(self):
+        live=engine.demo_live()
+        live._on_live_arrangement_list((0,json.dumps([[16.,2.,'Copied']])))
+        live._on_live_track_get_arrangement_clips_length((0,64.))
+        self.assertEqual(live.tracks[0].arrangement_clips(),[(16.,2.,'Copied')])
+
+    def test_held_volume_opens_specific_automation_menu_without_value_change(self):
+        a=engine.App.__new__(engine.App)
+        a.ui,a.live=ui_module.UiState(),engine.demo_live()
+        a.live.send=Mock();a.dirty=threading.Event()
+        a.touch={'action':('drag','vol',('track',0))}
+        self.assertTrue(a.automation_hold_menu())
+        cmd=a.ui.sheet['items'][0][1]
+        self.assertEqual(cmd[1]['kind'],'volume')
+        self.assertTrue(a.touch['long'])
+        a.live.send.assert_not_called()
+
     def test_group_callbacks_share_single_clipboard_paste_action(self):
         clips = [NS(start_time=float(i*8),length=4.,name=str(i),is_midi_clip=True) for i in range(2)]
         tracks = [NS(arrangement_clips=[c],is_frozen=False,has_midi_input=True,

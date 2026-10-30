@@ -1165,6 +1165,18 @@ class BrowserHandler(AbletonOSCHandler):
         from importlib import reload
         from . import arrangement
         reload(arrangement)
+        from . import automation
+        reload(automation)
+
+        def parameter_automation(params):
+            import json
+            token, op, payload = params[:3]
+            try:
+                result = automation.execute(self.song, json.loads(payload), str(op), params[3:])
+            except Exception as e:
+                result = dict(error=str(e))
+            self.osc_server.send('/live/automation', (str(token),json.dumps(result)))
+        self.osc_server.add_handler('/live/automation', parameter_automation)
 
         def arrangement_edit(params):
             from .arrangement import edit
@@ -1179,25 +1191,28 @@ class BrowserHandler(AbletonOSCHandler):
 
         def arrangement_get(params):
             import json
-            from .arrangement import detail
+            from .arrangement import detail, clip_length
             t, left, right = int(params[0]), float(params[1]), float(params[2])
             import math
             if not 0 <= t < len(self.song.tracks) or not all(math.isfinite(v) for v in (left,right)) or right <= left:
                 return
-            visible = [c for c in self.song.tracks[t].arrangement_clips
-                       if c.start_time < right and c.start_time+c.length > left]
+            clips = list(self.song.tracks[t].arrangement_clips)
+            self.osc_server.send("/live/arrangement/list", (t, json.dumps(
+                [(c.start_time, clip_length(c), c.name) for c in clips])))
+            visible = [c for c in clips
+                       if c.start_time < right and c.start_time+clip_length(c) > left]
             for c in visible[:32]:
                 try:
                     data = detail(c, left, right)
                     self.osc_server.send('/live/arrangement/detail', (t, json.dumps(data, separators=(',', ':'))))
                 except Exception as e:
                     self.osc_server.send('/live/arrangement/detail', (t, json.dumps(dict(
-                        start=c.start_time, length=c.length, name=c.name, error=str(e)))))
+                        start=c.start_time, length=clip_length(c), name=c.name, error=str(e)))))
         self.osc_server.add_handler('/live/arrangement/get', arrangement_get)
 
         clipboard = [None]
         def arrangement_clipboard(params):
-            from .arrangement import find_clip, empty_destination
+            from .arrangement import find_clip, empty_destination, clip_length
             op = str(params[0])
             t = int(params[1])
             try:
@@ -1205,7 +1220,7 @@ class BrowserHandler(AbletonOSCHandler):
                     raise ValueError('Track no longer exists')
                 if op in ('copy', 'cut'):
                     tr, c = find_clip(self.song, t, float(params[2]), float(params[3]), str(params[4]))
-                    clipboard[0] = (tr, c, op, (c.start_time, c.length, c.name))
+                    clipboard[0] = (tr, c, op, (c.start_time, clip_length(c), c.name))
                     result = 'Clip copied' if op == 'copy' else 'Cut ready; source moves when pasted'
                 elif op == 'paste':
                     if clipboard[0] is None:
@@ -1218,7 +1233,7 @@ class BrowserHandler(AbletonOSCHandler):
                     tr, c, mode, fingerprint = clipboard[0]
                     if tr not in self.song.tracks or c not in tr.arrangement_clips:
                         raise ValueError('Source clip no longer exists; copy again')
-                    if (c.start_time, c.length, c.name) != fingerprint:
+                    if (c.start_time, clip_length(c), c.name) != fingerprint:
                         raise ValueError('Source clip changed; copy again')
                     dst = self.song.tracks[t]
                     if bool(dst.has_midi_input) != bool(c.is_midi_clip):
@@ -1226,7 +1241,7 @@ class BrowserHandler(AbletonOSCHandler):
                     if tr.is_frozen:
                         raise ValueError('Unfreeze the source track first')
                     at = float(params[2])
-                    empty_destination(self.song, dst, at, c.length)
+                    empty_destination(self.song, dst, at, clip_length(c))
                     self.song.begin_undo_step()
                     try:
                         dst.duplicate_clip_to_arrangement(c, at)

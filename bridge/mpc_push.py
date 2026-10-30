@@ -738,6 +738,8 @@ class App:
         elif name == "MENU":
             if ui.shift:
                 self.user_quit()
+            elif self.automation_hold_menu():
+                pass
             elif ui.help or ui.sheet or ui.kb or ui.colors:
                 ui.help, ui.sheet, ui.kb, ui.colors = False, None, None, None
             else:
@@ -1028,7 +1030,9 @@ class App:
             self.ui.arr_follow = False
         if action and action[:2] == ('drag','arr'):
             self.ui.arr_follow = False
-        if action and action[:2] == ("drag", "env"):
+        if action and action[:2] == ('drag','parameter_env'):
+            self.parameter_env_draw(x,y)
+        elif action and action[:2] == ("drag", "env"):
             self.env_draw_at(x, y)
         elif action and action[:2] == ("drag", "dialog"):     # press on Live's real dialog
             r = self.renderer
@@ -1072,6 +1076,9 @@ class App:
             tc["moved"] = True
         action, v0 = tc["action"], tc["start"]
         if tc.get('long'):
+            return
+        if action and action[:2] == ('drag','parameter_env'):
+            self.parameter_env_draw(x,y)
             return
         if action and action[0] == 'arr_clip' and tc['moved']:
             if tc.get('arr_can_move'):
@@ -1153,6 +1160,78 @@ class App:
             self.ui.clip_view = (max(0.0, s0 - dx * vlen / (RAIL_X - KEY_W)), vlen)
             if kind == "roll":
                 self.ui.pitch_lo = max(0, min(127 - ROLL_ROWS + 1, p0 + round(dy / ROLL_ROW_H)))
+
+    def parameter_env_draw(self,x,y):
+        live=self.live
+        data=live.automation_data
+        if not data or data.get('error'):
+            return
+        top,bottom=MAIN_Y+110,720-45
+        beat=data['a']+max(0.,min(.999999,(x-KEY_W)/(RAIL_X-1-KEY_W)))*(data['b']-data['a'])
+        step=self.ui.grid
+        at=data['a']+math.floor((beat-data['a'])/step)*step
+        value=data['min']+max(0.,min(1.,(bottom-y)/(bottom-top)))*(data['max']-data['min'])
+        self.throttled('parameter_env',lambda:live.request_automation('step',(at,min(step,data['b']-at),value)))
+
+    def automation_action(self,action):
+        if not action or action[0]!='drag':
+            return None
+        kind,index=action[1:3]
+        live=self.live
+        if kind=='param':
+            dev=live.dev
+            if not 0 <= index < len(dev.pnames):return None
+            target=dict(track=dev.track,kind='device',path=dev.path(),param=index,
+                        param_name=dev.pnames[index],device_name=dev.names[dev.idx])
+        elif kind in ('vol','pan','send'):
+            key=index[0] if kind=='send' else strip_key(index)
+            key=strip_key(key)
+            if key[0]!='track':
+                live.toast('Return/master envelopes are not exposed by the clip automation API')
+                return None
+            target=dict(track=key[1],kind={'vol':'volume','pan':'panning','send':'send'}[kind])
+            if kind=='send':target['param']=index[1]
+        else:return None
+        t=target['track']
+        if not 0 <= t < len(live.tracks):return None
+        target['track_name']=live.tracks[t].name
+        return target
+
+    def automation_hold_menu(self):
+        action=self.touch['action'] if self.touch else None
+        if not action and self.ui.page=='device' and self.ui.qlink_touch:
+            params=self.ui.qlink_params(self.live.dev)
+            q=min(self.ui.qlink_touch)
+            if q<len(params):action=('drag','param',params[q])
+        target=self.automation_action(action)
+        if target is None:return False
+        if self.touch:self.touch['long']=True
+        self.ui.sheet={'title':target.get('param_name',target['kind'].capitalize()),
+                       'items':[('Show automation',('parameter_automation',target))]}
+        self.dirty.set()
+        return True
+
+    def open_parameter_automation(self,target):
+        live,ui=self.live,self.ui
+        t=target['track']
+        if ui.automation_arrangement:
+            selection=ui.arr_selected
+            clip = selection[1:] if selection and selection[0]==t else next(
+                (c for c in live.tracks[t].arrangement_clips() if c[0]<=live.song_time<c[0]+c[1]),None)
+            if clip is None:
+                live.toast('Select an Arrangement clip on this track first');return
+            target={**target,'arr':clip}
+        else:
+            slot=live.clip[1] if live.clip and live.clip[0]==t else self.pick_clip(t)
+            clips=live.tracks[t].clips
+            if not 0<=slot<len(clips) or not clips[slot][0]:
+                live.toast('Select a recorded Session clip on this track first');return
+            target={**target,'slot':slot,'clip_name':clips[slot][1]}
+        self.automation_return=ui.page
+        live.automation_target=target;live.automation_data=None;live.automation_token+=1
+        ui.parameter_automation=True
+        ui.page,live.mode='clip','clip'
+        live.request_automation('show')
 
     def arrangement_marquee(self, x, y):
         ui, tc = self.ui, self.touch
@@ -1353,6 +1432,13 @@ class App:
     def tap(self, action):
         ui, live = self.ui, self.live
         kind = action[0]
+        if kind == 'automation_back':
+            live.automation_target=None;live.automation_data=None
+            self.set_page(getattr(self,'automation_return','arrange'))
+            return
+        if kind in ('automation_clear','automation_refresh'):
+            live.request_automation('clear' if kind=='automation_clear' else 'get')
+            return
         if kind == "page":
             self.set_page(action[1])
         elif kind == "arr_clip":
@@ -1655,6 +1741,10 @@ class App:
         if page != "browse":
             self.stop_preview()
         ui.page = page
+        if page in ('arrange','session'):
+            ui.automation_arrangement=page=='arrange'
+        live.automation_target=None
+        ui.parameter_automation=False
         live.mode = page
         ui.help = False
         if page == 'arrange':
@@ -2052,6 +2142,8 @@ class App:
             if not tc or tc["moved"] or tc.get("long") or time.time() - tc["t"] < LONG_PRESS_S:
                 return
             a = tc["action"]
+            if a and a[0]=='drag' and a[1] in ('param','vol','pan','send'):
+                if self.automation_hold_menu():return
             if a and a[0] == 'arr_clip' and not self.ui.sheet:
                 tc['long'] = True
                 if a[1:] in self.ui.arr_selection and len(self.ui.arr_selection) > 1:
@@ -2234,6 +2326,9 @@ class App:
         ui, live = self.ui, self.live
         ui.sheet = None
         k = cmd[0]
+        if k=='parameter_automation':
+            self.open_parameter_automation(cmd[1])
+            return
         if k == 'arr_group':
             live.send('/live/arrangement/group', cmd[1], json.dumps(cmd[2],separators=(',',':')))
             return

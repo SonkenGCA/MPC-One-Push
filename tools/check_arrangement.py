@@ -44,6 +44,13 @@ class Arrangement(unittest.TestCase):
         self.track.delete_clip.assert_not_called()
 
 class Groups(unittest.TestCase):
+    def test_arrangement_extent_is_not_loop_length(self):
+        clip=SimpleNamespace(start_time=16.,end_time=18.,length=32.,name='Trimmed')
+        tr=SimpleNamespace(arrangement_clips=[clip])
+        song=SimpleNamespace(tracks=[tr])
+        self.assertEqual(module.clip_length(clip),2.)
+        self.assertIs(module.find_clip(song,0,16.,2.,'Trimmed')[1],clip)
+        with self.assertRaises(ValueError):module.find_clip(song,0,16.,32.,'Trimmed')
     def setUp(self):
         self.a = SimpleNamespace(start_time=0.,length=4.,name='A',is_midi_clip=True)
         self.b = SimpleNamespace(start_time=8.,length=2.,name='B',is_midi_clip=True)

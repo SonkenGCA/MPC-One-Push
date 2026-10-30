@@ -1,6 +1,22 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 - Parameter automation shortcuts and Arrangement sync
+
+Hold a device parameter or track volume/pan/send control, then choose Show automation.
+Touch a device Q-Link and press MENU for the same shortcut. Session clip envelopes open in
+both the MPC editor and Live; draw grid steps, clear the lane, or re-enable automation.
+Nested rack parameters are addressed by path with track/device/parameter name guards.
+The editor polls native envelopes every 500 ms and rejects stale replies from another target.
+Live's runtime API explicitly returns no Arrangement envelopes, so Arrangement drawing and
+return/master envelopes are not implemented; that limit is shown instead of a disconnected curve.
+
+Arrangement geometry now uses end_time minus start_time, independently of source loop length.
+A single snapshot updates clip names/positions/extents together. This fixes copies or trimmed
+clips that looked too long on the MPC. Bounds checks and group operations use the same extents.
+Real Live test reproduced an 8-beat clip whose loop length was still 16 beats. Session automation
+show/write/readback/clear also passed on temporary tracks; test tracks were removed afterward.
+
+### Earlier fixes included in this release
 
 Arrangement pads now always play notes instead of inheriting Session launch mode. Entering
 Arrangement or starting its Play/Record clears Session recording and restores Arrangement

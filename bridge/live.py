@@ -49,8 +49,11 @@ class Track:
         self.route = None        # (input type, input channel, output type, output channel, monitoring 0/1/2/-1)
         self.arr = {"name": [], "start_time": [], "length": []}     # arrangement clips, parallel lists
         self.arr_details = {}
+        self.arr_snapshot = None
 
     def arrangement_clips(self):
+        if self.arr_snapshot is not None:
+            return self.arr_snapshot
         a = self.arr
         n = min(len(a["name"]), len(a["start_time"]), len(a["length"]))
         return [(a["start_time"][i], a["length"][i], a["name"][i]) for i in range(n)]
@@ -188,6 +191,9 @@ class Live:
         self.clip_info = {}              # name, color, length, loop_start, loop_end, is_midi_clip, playing_position
         self.notes = []                  # [pitch, start, duration, velocity, mute]
         self.env = None                  # {"key": (dev, param), "exists", "min", "max", "vals"}
+        self.automation_target = None
+        self.automation_data = None
+        self.automation_token = 0
         self.env_key = (-1, 0)           # which parameter the automation lane shows; (-1, 0/1) = volume/pan
         self.auto_arm = False            # Live's Automation Arm (session_automation_record)
         self.last_msg = 0.0
@@ -335,7 +341,10 @@ class Live:
                 self.send("/live/song/get/session_automation_record")
                 self.send("/live/mixer/get/main_controls")
                 self.send("/live/song/get/count_in_duration")
-            if self.mode == "clip" and self.clip_exists():
+            if self.mode == 'clip' and self.automation_target:
+                if tick % 10 == 0 and not self.held('env'):
+                    self.request_automation()
+            elif self.mode == "clip" and self.clip_exists():
                 t, s = self.clip
                 if tick % 2 == 0 and self.playing:
                     self.send("/live/clip/get/playing_position", t, s)
@@ -681,6 +690,26 @@ class Live:
         t = v[0] if v else -1
         if isinstance(t, int) and 0 <= t < len(self.tracks):
             self.tracks[t].arr[key] = list(v[1:])
+
+    def request_automation(self, op='get', values=()):
+        self.send('/live/automation',str(self.automation_token),op,
+                  json.dumps(self.automation_target,separators=(',',':')),*values)
+
+    def _on_live_automation(self, v):
+        if not self.automation_target or str(v[0]) != str(self.automation_token):
+            return
+        data = json.loads(v[1])
+        if data.get('error'):
+            self.toast(data['error'])
+            if self.automation_data is None:
+                self.automation_data = data
+            return
+        self.automation_data = data
+        self.env = data
+
+    def _on_live_arrangement_list(self, v):
+        if len(v) == 2 and 0 <= v[0] < len(self.tracks):
+            self.tracks[v[0]].arr_snapshot = [tuple(c) for c in json.loads(v[1])]
 
     def _on_live_arrangement_detail(self, v):
         if len(v) != 2 or not 0 <= v[0] < len(self.tracks):

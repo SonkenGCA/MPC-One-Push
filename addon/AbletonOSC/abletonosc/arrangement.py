@@ -1,6 +1,10 @@
 """Guarded arrangement operations; accepts an actual or simulated Live Song."""
 import math
 
+def clip_length(c):
+    """Arrangement extent is independent of the source loop length."""
+    return float(c.end_time-c.start_time) if hasattr(c, "end_time") else float(c.length)
+
 def capture_group(song, selection):
     """Keep Live object identities as well as metadata so a reordered/deleted source is rejected."""
     if not isinstance(selection, list) or not 1 <= len(selection) <= 128:
@@ -14,7 +18,7 @@ def capture_group(song, selection):
             raise ValueError('Duplicate clip in selection')
         seen.add(key)
         tr, c = find_clip(song, *key)
-        entries.append((t, tr, c, (c.start_time, c.length, c.name)))
+        entries.append((t, tr, c, (c.start_time, clip_length(c), c.name)))
     return dict(clips=entries, base_track=min(e[0] for e in entries),
                 start=min(e[3][0] for e in entries),
                 end=max(e[3][0]+e[3][1] for e in entries))
@@ -27,7 +31,7 @@ def paste_group(song, group, target_track, at):
     for t, tr, c, fingerprint in group['clips']:
         if t >= len(song.tracks) or song.tracks[t] != tr or c not in tr.arrangement_clips:
             raise ValueError('Source tracks/clips changed; copy again')
-        if (c.start_time, c.length, c.name) != fingerprint:
+        if (c.start_time, clip_length(c), c.name) != fingerprint:
             raise ValueError('Source clip changed; copy again')
         dest_index = target_track+t-group['base_track']
         if not 0 <= dest_index < len(song.tracks):
@@ -36,11 +40,11 @@ def paste_group(song, group, target_track, at):
         if tr.is_frozen or bool(dst.has_midi_input) != bool(c.is_midi_clip):
             raise ValueError('Unfreeze sources and match MIDI/audio destination tracks')
         dest = at+c.start_time-group['start']
-        empty_destination(song, dst, dest, c.length)
+        empty_destination(song, dst, dest, clip_length(c))
         for other_dst, _, other_at, other_len in plan:
-            if dst == other_dst and dest < other_at+other_len-1e-5 and dest+c.length > other_at+1e-5:
+            if dst == other_dst and dest < other_at+other_len-1e-5 and dest+clip_length(c) > other_at+1e-5:
                 raise ValueError('Selected clips would overlap')
-        plan.append((dst, c, dest, c.length))
+        plan.append((dst, c, dest, clip_length(c)))
     created = []
     song.begin_undo_step()
     try:
@@ -66,7 +70,7 @@ def find_clip(song, track, start, length, name):
         raise ValueError('Track changed; select the clip again')
     tr = song.tracks[track]
     matches = [c for c in tr.arrangement_clips if abs(c.start_time-start) < 1e-5
-               and abs(c.length-length) < 1e-5 and c.name == name]
+               and abs(clip_length(c)-length) < 1e-5 and c.name == name]
     if len(matches) != 1:
         raise ValueError('Clip changed; select it again')
     return tr, matches[0]
@@ -76,19 +80,19 @@ def empty_destination(song, tr, at, length):
         raise ValueError('Stop recording / unfreeze the track before editing')
     if not math.isfinite(at) or at < 0 or at+length > 1576800:
         raise ValueError('Destination outside the arrangement')
-    if any(c.start_time < at+length-1e-5 and c.start_time+c.length > at+1e-5
+    if any(c.start_time < at+length-1e-5 and c.start_time+clip_length(c) > at+1e-5
            for c in tr.arrangement_clips):
         raise ValueError('Destination overlaps a clip; choose empty space')
 
 def detail(c, left, right):
     """Bounded thumbnail data in clip time; audio positions are supplied by Live's warp map."""
-    data = dict(start=float(c.start_time), length=float(c.length), name=c.name,
+    data = dict(start=float(c.start_time), length=float(clip_length(c)), name=c.name,
                 color=int(c.color), muted=bool(c.muted), midi=bool(c.is_midi_clip),
                 offset=float(c.start_marker), looping=bool(c.looping),
                 loop_start=float(c.loop_start), loop_end=float(c.loop_end))
     if c.is_midi_clip:
         notes = c.get_notes_extended(0, 128, min(0., c.start_marker, c.loop_start),
-                                    max(c.end_marker, c.loop_end, c.start_marker+c.length)+1)
+                                    max(c.end_marker, c.loop_end, c.start_marker+clip_length(c))+1)
         data['notes'] = [(n.pitch, n.start_time, n.duration, n.velocity, n.mute) for n in notes[:512]]
         data['truncated'] = len(notes) > 512
     else:
@@ -96,7 +100,7 @@ def detail(c, left, right):
         data['frames'] = c.sample_length
         data['rate'] = c.sample_rate
         # A fixed-size map for the visible portion also handles tempo changes in warped clips.
-        a, b = max(0., left-c.start_time), min(c.length, right-c.start_time)
+        a, b = max(0., left-c.start_time), min(clip_length(c), right-c.start_time)
         data['range'] = [a, b]
         positions = []
         for i in range(257):
@@ -109,7 +113,7 @@ def detail(c, left, right):
             else:
                 # Arrangement loop bounds delimit the visible unwarped region, in seconds.
                 # end_marker may still describe the original Session source and is not the edge.
-                seconds = c.loop_start+rel*(c.loop_end-c.loop_start)/max(c.length, 1e-6)
+                seconds = c.loop_start+rel*(c.loop_end-c.loop_start)/max(clip_length(c), 1e-6)
                 positions.append(c.seconds_to_sample_time(seconds))
         # Both Live conversion functions return SAMPLE FRAMES, not seconds.
         data['sample_positions'] = positions
@@ -123,7 +127,7 @@ def edit(song, track, start, length, name, operation, destination):
         raise ValueError('Stop recording / unfreeze the track before editing')
     clips = list(tr.arrangement_clips)
     matches = [c for c in clips if abs(c.start_time-start) < 1e-6
-               and abs(c.length-length) < 1e-6 and c.name == name]
+               and abs(clip_length(c)-length) < 1e-6 and c.name == name]
     if len(matches) != 1:
         raise ValueError('Clip changed; select it again')
     source = matches[0]
@@ -132,7 +136,7 @@ def edit(song, track, start, length, name, operation, destination):
     if operation in ('duplicate', 'move'):
         if not math.isfinite(destination) or destination < 0 or destination+length > 1576800:
             raise ValueError('Destination outside the arrangement')
-        if any(c.start_time < destination+length-1e-6 and c.start_time+c.length > destination+1e-6 for c in clips):
+        if any(c.start_time < destination+length-1e-6 and c.start_time+clip_length(c) > destination+1e-6 for c in clips):
             raise ValueError('Destination overlaps a clip; choose empty space')
     song.begin_undo_step()
     try:
