@@ -9,9 +9,10 @@ destination is checked before copying, with one Undo step and cleanup of new cop
 rejects a later copy. Ruler dragging still scrolls; single selected clips still drag-move.
 
 49 offline checks pass, including reverse-direction selection, callback wiring, stale sources,
-occupied destinations and rollback. This multi-clip pass has not been tested on physical hardware
-or in a running Live set; the current controller session was left running. Restart Live and the
-controller to load the updated add-on and UI.
+occupied destinations and rollback. A real Live test duplicated and pasted three clips across two
+tracks, verified preserved spacing, rejected occupied destinations and reversed a whole paste with
+one Undo. Temporary tracks were removed and original selection restored. Physical touchscreen
+testing remains pending. Update the add-on and restart Live/controller to activate.
 
 ## 0.3.0 - Arrangement thumbnails and touch editing
 
