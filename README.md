@@ -25,8 +25,8 @@ more field testing. This is a Windows host application, not standalone MPC firmw
 ## Requirements
 
 Tested with Windows 10, original Akai MPC One firmware **2.10.0.82**, MPC One driver **1.0.5**,
-MPC desktop **3.9.1**, Ableton Live **12 Suite 12.4.5**, and Python **3.14**. Other combinations
-are unverified; Live 12.4 APIs are used by several features. MPC One+ / Live / Live II / X are untested.
+MPC desktop **3.9.1**, Ableton Live **12**, and Python **3.14**. Other hardware and host configurations
+are unverified. MPC One+ / Live / Live II / X are untested.
 
 Install the official Akai MPC desktop software/driver first, and verify controller mode works there.
 Keep the tested firmware when evaluating this project. The app streams display/control messages through
