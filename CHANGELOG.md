@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1 — One launcher
+
+Simplified the public package to start-push.bat for the current Studio UI. Removed alternate launchers
+and classic-interface instructions. Added a setup hint when the Python environment is missing.
+
 ## 0.1.0 â€” Public preview
 
 Initial public snapshot of the working Windows/MPC One controller: touchscreen Studio UI,

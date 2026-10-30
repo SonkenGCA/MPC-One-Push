@@ -18,7 +18,7 @@ more field testing. This is a Windows host application, not standalone MPC firmw
 - Device chains, racks, 66 stock device parameter layouts, EQ/filter/synth/effect visualizations,
   Simpler waveform/slicing and 16-knob plug-in pages.
 - Browser search, Places samples, preview, device presets and touchable mirrored plug-in/Live dialogs.
-- Push Studio UI with selection, touch and view-change animations; optional classic appearance.
+- Push Studio UI with selection, touch and view-change animations.
 
 ![Motion preview](docs/images/motion.gif)
 
@@ -67,13 +67,12 @@ assignments competing for the MPC's ports. Change Live settings through its Sett
 
 ## Try the interface without hardware
 
-Double-click **start-push-studio.bat** for the offline desktop preview. Keys 1–6 switch pages;
+Run `.\.venv\Scripts\python.exe bridge/mpc_push_studio.py --desktop` for the offline desktop preview. Keys 1–6 switch pages;
 A switches notes/automation; H shows help; Escape closes. This is a visual preview with a subset of
 simulated interactions. `--demo` writes screenshots and an animated gallery under `design/push-studio/preview`.
 
-`start-push.bat --reduced-motion` disables the added motion effects. `start-push-classic.bat` uses the
-classic renderer. `start-autostart.bat --check` reports readiness without starting a hardware session;
-the watcher itself is optional and is not installed into Windows startup automatically.
+`start-push.bat --reduced-motion` disables the added motion effects.
+The public package has one launcher: **start-push.bat**, which opens the current Studio interface.
 
 ## Controls
 
