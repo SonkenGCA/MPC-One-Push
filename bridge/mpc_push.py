@@ -747,7 +747,7 @@ class App:
         elif name == "STOP":
             live.song("stop_all_clips" if ui.shift else "stop_playing")
         elif name == "PLAY START":
-            live.set_song("current_song_time", 0.0)
+            live.set_song_time(0.0)
             live.song("start_playing")
         elif name == "REC" and ui.shift:               # SHIFT+REC: record-arm the selected track
             if 0 <= live.sel < len(live.tracks):

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1 — Arrangement recording start fix
+
+Arrangement dial/timeline seeking now sets Live’s playback start marker as well as its current
+playhead position. PLAY START resets both to zero. This fixes Play/Record returning to an older
+mouse-selected start position. Verified both positions against Live while stopped, then restored them.
+
 ## 0.2.0 — Playing, mixer, racks and arrangement editing
 
 Added native Live count-in and device duplication/reordering.

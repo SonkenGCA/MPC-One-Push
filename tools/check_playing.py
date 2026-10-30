@@ -10,6 +10,16 @@ import push_ui
 
 
 class Playing(unittest.TestCase):
+    def test_arrangement_wheel_updates_live_start_marker_path(self):
+        a = engine.App.__new__(engine.App)
+        a.ui, a.live = push_ui.UiState(), engine.demo_live()
+        a.ui.page, a.live.song_time = 'arrange', 0.
+        a.live.send = Mock()
+        a.wheel(2)
+        a.live.send.assert_called_with('/live/song/seek',8.)
+        a.wheel(-9)
+        a.live.send.assert_called_with('/live/song/seek',0.)
+
     def setUp(self):
         self.app = engine.App.__new__(engine.App)
         a = self.app

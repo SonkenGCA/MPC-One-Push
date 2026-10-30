@@ -20,6 +20,18 @@ class BrowserHandler(AbletonOSCHandler):
         self.class_identifier = "browser"
 
     def init_api(self):
+        def song_seek(params):
+            """Set playback position AND Live's start marker; no args reads both."""
+            if params:
+                import math
+                beats = float(params[0])
+                start = float(params[1]) if len(params) > 1 else beats
+                if not all(math.isfinite(v) and 0 <= v <= 1576800 for v in (beats, start)):
+                    raise ValueError('Invalid arrangement position')
+                self.song.current_song_time = beats
+                self.song.start_time = start
+            self.osc_server.send("/live/song/seek", (float(self.song.current_song_time), float(self.song.start_time)))
+        self.osc_server.add_handler("/live/song/seek", song_seek)
         def count_in(params):
             if params:
                 value = int(params[0])

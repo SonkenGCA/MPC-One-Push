@@ -15,6 +15,19 @@ def callback(name, env):
     return env[name]
 
 class AddonActions(unittest.TestCase):
+    def test_seek_sets_playhead_and_start_marker_without_playing(self):
+        host = NS(song=NS(current_song_time=0., start_time=4., is_playing=False, record_mode=False),
+                  osc_server=NS(send=Mock()))
+        fn = callback('song_seek', {'self':host})
+        fn((32.,))
+        self.assertEqual((host.song.current_song_time,host.song.start_time),(32.,32.))
+        self.assertFalse(host.song.is_playing)
+        self.assertFalse(host.song.record_mode)
+        fn((8.,16.))
+        self.assertEqual((host.song.current_song_time,host.song.start_time),(8.,16.))
+        for invalid in (-1.,float('nan'),float('inf')):
+            with self.assertRaises(ValueError): fn((invalid,))
+        self.assertEqual((host.song.current_song_time,host.song.start_time),(8.,16.))
     def test_count_in_validates_live_enum(self):
         host = NS(song=NS(count_in_duration=0), osc_server=NS(send=Mock()))
         fn = callback('count_in', {'self':host})

@@ -1498,9 +1498,11 @@ class Live:
             cb(str(v[0]) if v else "")
 
     def set_song_time(self, beats):
+        if not math.isfinite(beats):
+            return
         self.song_time = max(0.0, beats)
         self.hold("time")
-        self.send("/live/song/set/current_song_time", float(self.song_time))
+        self.send("/live/song/seek", float(self.song_time))
 
     def set_loop(self, start, length):
         self.loop_start, self.loop_len = max(0.0, start), max(1.0, length)
