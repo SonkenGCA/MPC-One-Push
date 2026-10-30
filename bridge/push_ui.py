@@ -517,8 +517,12 @@ class Renderer:
         # position readout where the ruler meets the lane names
         bar, rest = divmod(live.song_time, bpb)
         pos = "%d. %d. %d" % (bar + 1, int(rest) + 1, int((rest % 1) * 4) + 1)
-        d.text((TL_X // 2, ry + ARR_RULER_H // 2), pos, font=font(24, "Bold SemiCondensed"),
-               fill=PLAY if live.playing else TEXT, anchor="mm")
+        d.rounded_rectangle((5,ry+3,TL_X-7,ly0-3),4,fill=PANEL,outline=LINE)
+        d.text((TL_X // 2, ry + 16), '+ TRACK', font=font(18, 'Bold SemiCondensed'),
+               fill=TEXT, anchor='mm')
+        d.text((TL_X // 2, ry + 35), pos, font=font(13),
+               fill=PLAY if live.playing else DIM, anchor='mm')
+        self.target(0,ry,TL_X,ly0,('add_track',))
         # ruler: bar numbers, loop brace, locators
         d.rectangle([TL_X, ry, RAIL_X - 1, ly0 - 2], fill=PANEL)
         step = next((s for s in (1, 2, 4, 8, 16, 32, 64, 128) if s * bpb * ppb >= 56), 256)

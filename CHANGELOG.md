@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+Arrangement now has a permanent + TRACK button at the upper left, opening MIDI, audio and return
+track creation. Position remains visible beneath the label. Available even with a full track bank.
+
 Box selection can now start in empty space below the last track and drag upward across clips.
 Added a regression check for the actual background touch target and upward selection.
 

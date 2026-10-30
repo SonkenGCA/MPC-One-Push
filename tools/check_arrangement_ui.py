@@ -96,6 +96,20 @@ class ArrangementTouch(unittest.TestCase):
         self.assertIsNone(a.ui.arr_marquee)
         a.live.send.assert_not_called()
 
+    def test_arrangement_add_track_available_with_full_or_empty_bank(self):
+        a = self.app
+        for count in (0,2,8):
+            a.live.tracks = engine.demo_live().tracks[:count]
+            _, targets = Renderer(motion=False).render(a.live,a.ui)
+            x,y = ui_module.TL_X//2,engine.MAIN_Y+20
+            action = next(t[4] for t in reversed(targets) if t[0]<=x<t[2] and t[1]<=y<t[3])
+            self.assertEqual(action,('add_track',))
+        a.tap(action)
+        self.assertEqual([item[1][1] for item in a.ui.sheet['items']],['midi','audio','return'])
+        a.live.new_track = Mock()
+        a.sheet_do(a.ui.sheet['items'][0][1])
+        a.live.new_track.assert_called_once_with('midi',-1)
+
     def test_drag_from_below_last_track_selects_upward(self):
         a = self.app
         a.live.tracks = a.live.tracks[:2]
