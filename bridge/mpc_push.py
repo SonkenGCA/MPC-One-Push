@@ -1077,7 +1077,7 @@ class App:
             else:
                 self.arrangement_marquee(x, y)
             return
-        if action and action[:2] == ('drag','arr') and action[2] >= 0 and tc['moved']:
+        if action and action[:2] == ('drag','arr') and action[2] != -1 and tc['moved']:
             self.arrangement_marquee(x, y)
             return
         if action and action[:2] == ("drag", "env"):    # drawing follows the finger from the first pixel

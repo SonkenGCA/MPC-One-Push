@@ -542,6 +542,9 @@ class Renderer:
                 d.polygon([(x - 7, ry + 30), (x + 7, ry + 30), (x, ry + 40)], fill=TEXT)
                 d.text((x + 10, ry + 36), fit(d, name, font(14), 120), font=font(14), fill=TEXT, anchor="lm")
         self.target(TL_X, ry, RAIL_X, ly0, ("drag", "arr", -1))
+        # Empty space below the last track is part of the selection canvas too.
+        # Real lane/clip targets below override this background target.
+        self.target(TL_X, ly0, RAIL_X, LOW_Y, ("drag", "arr", -2))
         # lanes
         for r in range(ROWS):
             t = ui.bank + r

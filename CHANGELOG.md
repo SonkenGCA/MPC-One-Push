@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+Box selection can now start in empty space below the last track and drag upward across clips.
+Added a regression check for the actual background touch target and upward selection.
+
 ## 0.3.1 - Arrangement multi-clip selection
 
 Drag from empty lane space or an unselected clip to box-select across tracks. Selected clips

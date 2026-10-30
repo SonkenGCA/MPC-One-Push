@@ -96,6 +96,25 @@ class ArrangementTouch(unittest.TestCase):
         self.assertIsNone(a.ui.arr_marquee)
         a.live.send.assert_not_called()
 
+    def test_drag_from_below_last_track_selects_upward(self):
+        a = self.app
+        a.live.tracks = a.live.tracks[:2]
+        for tr in a.live.tracks:
+            tr.arr = dict(name=['A'],start_time=[0.],length=[4.])
+        a.renderer = Renderer(motion=False)
+        _, targets = a.renderer.render(a.live,a.ui)
+        x = ui_module.TL_X+6*a.ui.arr_ppb()
+        y = engine.MAIN_Y+engine.ARR_RULER_H+3*engine.ARR_LANE_H
+        action = next(t[4] for t in reversed(targets) if t[0]<=x<t[2] and t[1]<=y<t[3])
+        self.assertEqual(action,('drag','arr',-2))
+        a.hit.return_value = action
+        a.touch_down(x,y)
+        a.touch_move(ui_module.TL_X+1,engine.MAIN_Y+engine.ARR_RULER_H+8)
+        self.assertEqual(len(a.ui.arr_selection),2)
+        a.touch_up(ui_module.TL_X+1,engine.MAIN_Y+engine.ARR_RULER_H+8)
+        self.assertEqual(a.ui.sheet['title'],'2 clips selected')
+        a.live.send.assert_not_called()
+
     def test_blank_space_hold_paste_location(self):
         a = self.app
         a.hit.return_value = ('drag','arr',0)
