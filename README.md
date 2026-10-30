@@ -83,6 +83,8 @@ The public package has one launcher: **start-push.bat**, which opens the current
 | MAIN / NEXT SEQ / STEP SEQ | Session / Arrangement / Clip |
 | TRACK MIX / PROGRAM EDIT / BROWSE | Mixer / Device / Browser |
 | Pads | Play notes; TRACK MUTE toggles clip launch mode; Clip page uses step sequencing |
+| Cue / Crossfader | MENU: adjust cue level and crossfader in 5% steps; center reset for the crossfader |
+| Rack macros | Select a rack on Device, then MENU > Rack macro variations: randomize, store, recall previous/next |
 | Playing options | MENU: Chord (off/major/minor/sevenths/sus/octaves), Velocity (linear/soft/hard), Pressure (poly/channel/mod wheel/off). Chords bypass Drum Rack and 16 Levels |
 | Arrangement clips | SHIFT+tap a clip: duplicate after, copy/move to playhead, move earlier/later by its length, or delete. Destinations must be empty; UNDO reverses an edit |
 | Q-Links | Four current mixer/device parameters; Q-LINK cycles the assigned group |
@@ -113,6 +115,7 @@ regularly through Live. No zero-risk hardware compatibility claim is made.
 .\.venv\Scripts\python.exe tools/check_reliability.py
 .\.venv\Scripts\python.exe tools/check_playing.py
 .\.venv\Scripts\python.exe tools/check_arrangement.py
+.\.venv\Scripts\python.exe tools/check_addon_actions.py
 ```
 
 These checks use simulated state, never open the MPC, and never edit the user's Live set.

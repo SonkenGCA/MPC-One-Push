@@ -148,6 +148,7 @@ class Live:
         self.mode = "session"            # which page the app shows; decides what gets polled
         self.view_tracks = (0, 8)        # tracks on screen, for meters and volumes
         self.returns, self.master = [], Strip("Main")     # Mix page: return tracks and the master
+        self.main_controls = None
         self.clip_details, self.want_details = {}, False   # Clip page DETAILS (want_details set by the app)
         self._detail_pending = set()
         self.mix_view, self.mix_returns = "mix", False   # what the Mix page shows (set by the app)
@@ -319,6 +320,7 @@ class Live:
                             self.send("/live/track/get/arrangement_clips/" + prop, t)
             if tick % 20 == 0:
                 self.send("/live/song/get/session_automation_record")
+                self.send("/live/mixer/get/main_controls")
             if self.mode == "clip" and self.clip_exists():
                 t, s = self.clip
                 if tick % 2 == 0 and self.playing:
@@ -769,6 +771,10 @@ class Live:
 
     # ------------------------------------------------------------ mixer: returns, master, sends, routing
 
+    def _on_live_mixer_get_main_controls(self, v):
+        if len(v) == 8:
+            self.main_controls = {name: tuple(v[i:i+4]) for name, i in (("cue_volume", 0), ("crossfader", 4))}
+
     def _poll_mixer(self, tick):
         a, b = self.view_tracks
         if self.mix_returns and tick % 4 == 0:           # 200 ms: the returns and master on screen
@@ -1071,6 +1077,11 @@ class Live:
         if len(v) >= 3 and v[2] != "ok":
             self.toast("Couldn't delete (%s)" % v[2])
         self.send("/live/chain/get/devices", self.dev.track, self.dev.chain)
+
+    def _on_live_dev_rack_action(self, v):
+        self.toast(str(v[2]))
+        if str(v[2]).startswith("ok"):
+            self._load_params()
 
     def request_bank_strings(self):
         d = self.dev

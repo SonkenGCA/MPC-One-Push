@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased — Playing and arrangement editing
+## Unreleased — Playing, mixer, racks and arrangement editing
 
+Added cue/crossfader controls and rack macro variation store/recall/randomization.
 Added chord modes, soft/hard velocity response and pressure routing (poly/channel/mod wheel/off).
 Held chord voicings are captured so octave/mode changes cannot leave their notes stuck.
 Drum Rack and 16 Levels bypass chords. Added SHIFT+tap arrangement actions: duplicate, delete,

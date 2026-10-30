@@ -405,6 +405,8 @@ class App:
             self.centre_roll()
             self.auto_arm()
             self.sync_knob_layout()
+            if self.ui.sheet and self.ui.sheet.get("main_controls"):
+                self.main_controls_sheet()
             try:
                 img, self.targets = self.renderer.render(self.live, self.ui)
             except Exception:                       # a drawing bug skips a frame instead of stopping the app
@@ -2072,6 +2074,8 @@ class App:
             ("Chord: " + ui.chord_mode, ("play_option", "chord_mode")),
             ("Velocity: " + ui.velocity_curve, ("play_option", "velocity_curve")),
             ("Pressure: " + ui.pressure_mode, ("play_option", "pressure_mode")),
+            ("Cue / Crossfader", ("main_controls",)),
+            ("Rack macro variations", ("rack_menu",)),
             ("Recordings to arrangement: %s" % ("on" if ui.rec_to_arr else "off"), ("rec_to_arr",)),
             ("Pads: %s" % ("in key" if ui.note_layout == "scale" else "chromatic"), ("layout",)),
             ("Key: %s" % NOTE_NAMES[self.live.scale[0] % 12], ("key_pick",)),
@@ -2081,10 +2085,49 @@ class App:
             ("New scene", ("new_scene", -1)), ("Capture scene", ("capture_scene",)),
             ("Help", ("help",)), ("Quit MPC One Push", ("quit",))]}
 
+    def main_controls_sheet(self):
+        items = []
+        for field, label in (("cue_volume", "Cue"), ("crossfader", "Crossfader")):
+            values = self.live.main_controls
+            if values:
+                readout = values[field][3]
+                items.extend([(label + " -  " + readout, ("main_set", field, -.05)),
+                              (label + " +  " + readout, ("main_set", field, .05))])
+                if field == "crossfader":
+                    items.append(("Crossfader center", ("main_set", field, "center")))
+        self.ui.sheet = {"title": "Cue / Crossfader" if items else "Waiting for Live mixer...",
+                         "main_controls": True, "items": items}
+
     def sheet_do(self, cmd):
         ui, live = self.ui, self.live
         ui.sheet = None
         k = cmd[0]
+        if k == "rack_menu":
+            dev = live.dev
+            if dev.names and dev.selected_info()[2]:
+                args = (dev.track, dev.path(), dev.names[dev.idx])
+                ui.sheet = {"title": "Rack macros", "items": [
+                    (label, ("rack_action", *args, action)) for label, action in (
+                        ("Randomize macros", "randomize"), ("Store variation", "store"),
+                        ("Recall previous", "previous"), ("Recall next", "next"))]}
+            else:
+                live.toast("Select a rack on the Device page first")
+            return
+        if k == "rack_action":
+            live.send("/live/dev/rack_action", *cmd[1:])
+            return
+        if k == "main_controls":
+            live.send("/live/mixer/get/main_controls")
+            self.main_controls_sheet()
+            return
+        if k == "main_set":
+            field, step = cmd[1:]
+            if live.main_controls:
+                value, lo, hi, _ = live.main_controls[field]
+                value = (lo+hi)/2 if step == "center" else max(lo, min(hi, value+step*(hi-lo)))
+                live.send("/live/mixer/set/main_controls", field, float(value))
+            self.main_controls_sheet()
+            return
         if k == "arr_edit":
             live.send("/live/arrangement/edit", *cmd[1:])
             return

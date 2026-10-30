@@ -13,3 +13,4 @@ jobs:
       - run: python tools/check_reliability.py
       - run: python tools/check_playing.py
       - run: python tools/check_arrangement.py
+      - run: python tools/check_addon_actions.py

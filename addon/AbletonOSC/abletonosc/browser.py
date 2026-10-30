@@ -784,6 +784,21 @@ class BrowserHandler(AbletonOSCHandler):
                 list(mx.sends)[int(what[4:])]
             p.value = max(p.min, min(p.max, v))
 
+        def main_controls(params):
+            mx = self.song.master_track.mixer_device
+            values = []
+            for field in ("cue_volume", "crossfader"):
+                p = getattr(mx, field)
+                if params and str(params[0]) == field:
+                    v = float(params[1])
+                    if not __import__('math').isfinite(v):
+                        raise ValueError('Invalid main control value')
+                    p.value = max(p.min, min(p.max, v))
+                values.extend((float(p.value), float(p.min), float(p.max), _pstr(p)))
+            self.osc_server.send("/live/mixer/get/main_controls", tuple(values))
+        self.osc_server.add_handler("/live/mixer/get/main_controls", main_controls)
+        self.osc_server.add_handler("/live/mixer/set/main_controls", main_controls)
+
         def mixer_toggle(params: Tuple[Any]):
             """/live/mixer/toggle (kind, i, "mute" | "solo")"""
             s = _strip(str(params[0]), int(params[1]))
@@ -1370,6 +1385,34 @@ class BrowserHandler(AbletonOSCHandler):
                 self.song.view.select_device(_walk(ti, dp))
             except Exception:
                 pass
+
+        def rack_action(params):
+            ti, dp, expected, action = int(params[0]), str(params[1]), str(params[2]), str(params[3])
+            try:
+                dev = _walk(ti, dp)
+                if dev.name != expected or not dev.can_have_chains:
+                    raise ValueError('Rack changed; select it again')
+                self.song.begin_undo_step()
+                try:
+                    if action == "randomize":
+                        dev.randomize_macros()
+                    elif action == "store":
+                        dev.store_variation()
+                    elif action in ("next", "previous"):
+                        if dev.variation_count < 1:
+                            raise ValueError('Store a variation first')
+                        step = 1 if action == "next" else -1
+                        dev.selected_variation_index = (dev.selected_variation_index+step) % dev.variation_count
+                        dev.recall_selected_variation()
+                    else:
+                        raise ValueError('Unsupported rack action')
+                finally:
+                    self.song.end_undo_step()
+                result = "ok: %d variations" % dev.variation_count
+            except Exception as e:
+                result = "error: %s" % e
+            _send("/live/dev/rack_action", [ti, dp, result])
+        self.osc_server.add_handler("/live/dev/rack_action", rack_action)
 
         self.osc_server.add_handler("/live/chain/get/devices", chain_devices)
         self.osc_server.add_handler("/live/dev/get/params", dev_params)
